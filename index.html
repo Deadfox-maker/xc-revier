@@ -151,8 +151,6 @@ svg.leaflet-zoom-animated{will-change:transform}
           <input type="file" id="igc" accept=".igc,.IGC,.txt,text/plain" multiple>
         </div>
         <button type="button" class="btn" id="pasteBtn">IGC-Text einfügen</button>
-        <button type="button" class="btn" id="clearBtn">Alles löschen</button>
-        <button type="button" class="btn" id="demoBtn">Beispiel 26.09. (24 Flüge)</button>
         <button type="button" class="btn" id="exportBtn">Sammeldatei speichern</button>
       </div>
       <div class="paste" id="pasteBox" hidden>
@@ -297,15 +295,22 @@ svg.leaflet-zoom-animated{will-change:transform}
 
   const EXCL=1.2, HOLD_DAYS=7, HOLD_F=1.3, NEULAND_EXTRA=1.0, NEULAND_DAYS=30, PERSONAL_EXTRA=0.3, TAKE_PCT=0.3, TAKE_BONUS=0.2;
   const CLASS_F_DEFAULT={A:1.0,B:0.9,C:0.7,D:0.5,'?':0.5};
-  const GLIDERS_DEFAULT={"A": ["Alpha", "Pi", "Prion", "Aonic", "Bantam", "Mojo", "Element", "Lyght", "Tequila", "Mescal", "Masala", "Bolero", "Calypso", "Yeti", "Koyot", "Kibo", "Ascent", "Symphonia", "Sonata", "Viola", "Eazy", "Soar", "Susi", "Adam", "Echo", "Magic", "Mito", "Pawn", "Gambit", "Muse", "Eona", "Birdy", "Freedom", "Cosmos", "Apollo", "Manta"], "B": ["Epsilon", "Iota", "Xi", "Ion", "Mentor", "Phantom", "Doubleskin", "Buzz", "Rush", "Geo", "Arriba", "Chili", "Arak", "Arak Air", "Spice", "Atlas", "Explorer", "Sprint", "Hook", "Ikuma", "Makalu", "Lhotse", "Tenor", "Maestro", "Beat", "Fantasia", "Vita", "Rise", "Epic", "Base", "Punk", "Riot", "Arcus", "Nyos", "Knight", "Rook", "Elan", "Eden", "Illusion", "Leaf", "Step", "Sora", "Antea", "Swift 5", "Swift 4"], "C": ["Sigma", "Sector", "Codex", "Delta", "Alpina", "Photon", "Swift 6", "Swift", "Cayenne", "Cumeo", "Camino", "Bonanza", "Carrera", "Artik", "Trango", "Summit", "Kangri", "Allegro", "Volt", "Cure", "Agera", "Nexus", "Queen", "Bishop", "Savage", "Fusion", "Exos", "Torus"], "D": ["Omega", "Xenon", "Mantra", "Zeno", "Zeolite", "Zeolite GT", "Poison", "Leopard", "Peak", "Klimber", "Meru", "Scala", "Hero", "Lynx", "Diva", "Core", "King", "Taska", "XCRacer", "Spectra", "Enzo", "Boomerang", "Icepeak", "Zeno 2", "Photon Light"]};
+  const GLIDERS_DEFAULT={"Advance": {"A": ["Alpha 7", "Alpha 8"], "B": ["Epsilon 9", "Epsilon 10", "Iota 2", "Iota 3", "Tau", "Theta"], "C": ["Sigma 11", "Sigma 12", "Sigma 12 SV"], "D": ["Omega XAlps 3", "Omega XAlps 4", "Omega X-Alps"]}, "AirDesign": {"A": ["Eazy 2", "Eazy 3", "Susi 4"], "B": ["Rise 4", "Rise 5", "Vita 2", "Vita 3", "Soar"], "C": ["Volt 4", "Volt 5"], "D": ["Hero 2", "Hero 3", "Hero 4"]}, "BGD": {"A": ["Adam", "Adam 2", "Seed"], "B": ["Epic", "Epic 2", "Base", "Base 2", "Base 3", "Magic"], "C": ["Cure", "Cure 2", "Cure 3", "Lynx", "Lynx 2"], "D": ["Diva", "Diva 2"]}, "Gin": {"A": ["Bolero 6", "Bolero 7", "Calypso"], "B": ["Atlas", "Atlas 2", "Atlas 3", "Explorer", "Explorer 2", "Sprint 4", "Sprint 5", "Evora"], "C": ["Camino", "Camino 2", "Bonanza 2", "Bonanza 3"], "D": ["Leopard", "Leopard 2", "Boomerang"]}, "Icaro": {"A": ["Pica", "Pica 2"], "B": ["Xenus", "Xenus 2", "Gravis", "Gravis 2"], "C": ["Maverick", "Maverick 2", "Maverick 3"], "D": []}, "Independence": {"A": ["Cruiser", "Pioneer"], "B": ["Geronimo", "Geronimo 2"], "C": ["Rasta"], "D": []}, "Mac Para": {"A": ["Muse 5", "Muse 6"], "B": ["Eden 7", "Eden 8", "Illusion", "Illusion 2"], "C": ["Elan 3", "Elan 4"], "D": ["Magus", "Magus 2"]}, "Niviuk": {"A": ["Koyot 4", "Koyot 5", "Kibo", "Kibo 2"], "B": ["Hook 5", "Hook 6", "Ikuma 2", "Ikuma 3", "Ikuma 3 P"], "C": ["Artik 5", "Artik 6", "Artik 7", "Artik 7 P"], "D": ["Peak 4", "Peak 5", "Peak 6", "Klimber", "Klimber 2", "Klimber 2 P", "Icepeak"]}, "Nova": {"A": ["Prion 5", "Prion 6", "Aonic", "Aonic 2", "Bantam"], "B": ["Ion 6", "Ion 7", "Mentor 6", "Mentor 7", "Mentor 7 Light", "Phantom", "Doubleskin"], "C": ["Sector", "Sector 2", "Codex", "Codex 2", "Codex Light"], "D": ["Xenon", "Xenon 2"]}, "Ozone": {"A": ["Mojo 6", "Mojo 7", "Element 3", "Element 4"], "B": ["Buzz Z6", "Buzz Z7", "Rush 5", "Rush 6", "Geo 6", "Geo 7", "Swift 4", "Swift 5"], "C": ["Delta 4", "Delta 5", "Alpina 4", "Alpina 5", "Photon", "Swift 6"], "D": ["Mantra 7", "Mantra 8", "Zeno", "Zeno 2", "Zeolite", "Zeolite 2", "Zeolite GT", "Zeolite 2 GT", "Enzo 3", "Enzo 4", "Photon Light"]}, "Phi": {"A": ["Symphonia", "Symphonia 2", "Sonata", "Sonata 2", "Viola", "Viola 2", "Fantasia", "Fantasia 2"], "B": ["Beat", "Beat 2", "Maestro", "Maestro 2", "Maestro X-Alps"], "C": ["Allegro", "Allegro 2", "Allegro X-Alps", "Fantasia X-Alps"], "D": ["Scala", "Scala 2"]}, "Skywalk": {"A": ["Tequila 5", "Tequila 6", "Mescal 5", "Mescal 6", "Masala 4", "Masala 5"], "B": ["Chili 4", "Chili 5", "Arak", "Arak 2", "Arak Air", "Arak Air 2", "Spice", "Spice 2", "Tonic 2"], "C": ["Cayenne 6", "Cayenne 7", "Cumeo", "Cumeo 2", "Mint", "Mint 2"], "D": ["Poison X-Alps", "Poison XAlps", "Poison X-Alps 3", "X-Alps 5"]}, "Supair": {"A": ["Eona", "Eona 2", "Eona 3", "Birdy"], "B": ["Leaf", "Leaf 2", "Leaf 3", "Step", "Step 2", "Step 3"], "C": ["Savage", "Savage 2", "Taska", "Taska 2"], "D": ["Wild", "Wild 2"]}, "Swing": {"A": ["Arcus RS", "Arcus RS Lite", "Mito", "Mito 2"], "B": ["Nyos RS", "Nyos 2 RS", "Arcus 2 RS"], "C": ["Agera RS", "Agera 2 RS", "Nexus", "Nexus 2"], "D": ["Core", "Core 2", "Core 3", "Core 4"]}, "Triple Seven": {"A": ["Pawn", "Pawn 2"], "B": ["Knight", "Knight 2", "Rook 3", "Rook 4"], "C": ["Queen", "Queen 2", "Queen 3", "Bishop"], "D": ["King", "King 2", "Gambit"]}, "UP": {"A": ["Ascent 4", "Ascent 5", "Kibo", "Makalu 4", "Makalu 5"], "B": ["Lhotse", "Lhotse 2", "Lhotse 3", "Summit XC 4", "Summit XC 5"], "C": ["Trango X-Race", "Trango XC 4", "Trango XC 5", "Trango X-Race 2"], "D": ["Meru", "Meru 2", "Meru 3"]}, "Flow": {"A": ["Cosmos", "Cosmos 2"], "B": ["Fusion", "Fusion 2", "Freedom", "Freedom 2"], "C": ["Spectra", "Spectra 2", "XCRacer", "XCRacer 2"], "D": ["Mullet", "Mullet 2"]}, "Dudek": {"A": ["Optic", "Optic 2"], "B": ["Colt", "Colt 2", "Run&Fly"], "C": ["Hadron 3 XX"], "D": []}, "Sky Paragliders": {"A": ["Anakis", "Anakis 3", "Anakis 4"], "B": ["Apollo", "Apollo 2", "Apollo 2 Light", "Kudos", "Kudos 2"], "C": ["Exos", "Exos 2", "Zenith"], "D": ["Gaia", "Gaia 2"]}, "Little Cloud": {"A": [], "B": ["Spiruline"], "C": ["Goose", "Goose 2"], "D": ["Urubu King"]}};
   let gliders=GLIDERS_DEFAULT;
+  const norm=x=>' '+String(x).toLowerCase().replace(/([a-z])(\d)/g,'$1 $2').replace(/(\d)([a-z])/g,'$1 $2').replace(/[^a-z0-9]+/g,' ').trim()+' ';
   function gliderClass(name){
     if(!name) return '';
-    const norm=x=>' '+String(x).toLowerCase().replace(/([a-z])(\d)/g,'$1 $2').replace(/(\d)([a-z])/g,'$1 $2').replace(/[^a-z0-9]+/g,' ').trim()+' ';
-    const s=norm(name);
-    let best='',bl=0;
-    for(const cls of ['A','B','C','D']) for(const m of (gliders[cls]||[])){ const k=norm(m); if(s.includes(k)&&k.length>bl){best=cls;bl=k.length;} }
+    const s=norm(name); let best='',bl=0;
+    for(const mf in gliders){ if(mf.startsWith('_')) continue; const mfHit=s.includes(norm(mf).trim()+' ')||s.includes(' '+norm(mf).trim());
+      for(const cls of ['A','B','C','D']) for(const m of (gliders[mf][cls]||[])){ const k=norm(m); if(s.includes(k)){ const score=k.length+(mfHit?10:0); if(score>bl){best=cls;bl=score;} } } }
     return best;
+  }
+  function gliderOptions(sel){
+    let h='<option value="">Schirm wählen…</option>';
+    const mfs=Object.keys(gliders).filter(k=>!k.startsWith('_')).sort();
+    for(const mf of mfs) for(const c of ['A','B','C','D']){ const list=(gliders[mf][c]||[]); if(!list.length) continue;
+      h+=`<optgroup label="${esc(mf)} · EN-${c}">`+list.map(m=>{const full=mf+' '+m;return `<option value="${esc(full)}" ${full===sel?'selected':''}>${esc(m)}</option>`;}).join('')+'</optgroup>'; }
+    return h;
   }
   const gliderOfPilot={};
   const classOfPilot={};
@@ -511,8 +516,6 @@ svg.leaflet-zoom-animated{will-change:transform}
   $('#exclHidden').addEventListener('change',e=>{ state.excludeHidden=e.target.checked; refresh(); });
   $('#corr').addEventListener('input',e=>{ state.corridor=+e.target.value; $('#corrVal').textContent=state.corridor; });
   $('#corr').addEventListener('change',refresh);
-  $('#clearBtn').addEventListener('click',()=>{ state.flights=[]; $('#hint').hidden=true; refresh(); });
-  $('#demoBtn').addEventListener('click',loadSample);
   document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
     document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b));
     state.tab=b.dataset.tab; render();
@@ -540,11 +543,6 @@ svg.leaflet-zoom-animated{will-change:transform}
     return {ok,dup,err};
   }
   function setDb(txt){ $('#dbstatus').textContent='Datenbank: '+txt; }
-  function gliderOptions(sel){
-    let h='<option value="">Schirm wählen…</option>';
-    for(const c of ['A','B','C','D']){ h+=`<optgroup label="EN-${c}">`+(gliders[c]||[]).slice().sort().map(m=>`<option value="${esc(m)}" ${m===sel?'selected':''}>${esc(m)}</option>`).join('')+'</optgroup>'; }
-    return h;
-  }
   function renderPrep(){
     const box=$('#prep'); if(!cfg||!cfg.supabaseUrl){ box.hidden=true; return; }
     const neu=state.flights.filter(f=>!f.inDb);
@@ -592,7 +590,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     if(!window.L||!window.turf){ showErr('Kartenbibliothek konnte nicht geladen werden. Internetverbindung prüfen.'); return; }
     initMap();
     try{ const r=await fetch('config.json',{cache:'no-store'}); if(r.ok) cfg=await r.json(); }catch(e){}
-    try{ const r=await fetch('gliders.json',{cache:'no-store'}); if(r.ok){ const g=await r.json(); gliders={}; for(const c of ['A','B','C','D']) gliders[c]=[...(GLIDERS_DEFAULT[c]||[]),...(g[c]||[])]; } }catch(e){}
+    try{ const r=await fetch('gliders.json',{cache:'no-store'}); if(r.ok){ const g=await r.json(); const out=JSON.parse(JSON.stringify(GLIDERS_DEFAULT)); for(const mf in g){ if(mf.startsWith('_')) continue; out[mf]=out[mf]||{}; for(const c of ['A','B','C','D']) out[mf][c]=[...new Set([...(out[mf][c]||[]),...(g[mf][c]||[])])]; } gliders=out; } }catch(e){}
     if(cfg&&cfg.supabaseUrl&&cfg.supabaseKey){
       $('#dbtools').hidden=false;
       try{ $('#clubCode').value=localStorage.getItem('xc-club-code')||''; }catch(e){}
