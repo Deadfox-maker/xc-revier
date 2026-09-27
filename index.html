@@ -203,7 +203,10 @@ svg.leaflet-zoom-animated{will-change:transform}
         <dt>Schluss</dt><dd>≤ 3 km oder ≤ 20 % der Strecke gilt als geschlossen</dd>
         <dt>Gleicher Tag</dt><dd>gemeinsam abgeflogene Fläche gehört allen</dd>
         <dt>Übernahme</dt><dd>späterer Tag nimmt allen bisherigen Besitzern den Teil</dd>
-        <dt>Punkte</dt><dd>km² pro Tag; allein gehalten × 1,2, geteilt × 1</dd>
+        <dt>Punkte</dt><dd>km² pro Tag; allein × 1,2, geteilt × 1</dd>
+        <dt>Haltebonus</dt><dd>seit 7 Tagen allein gehalten × 1,3</dd>
+        <dt>Neuland</dt><dd>nie geflogene Fläche zählt am 1. Tag doppelt</dd>
+        <dt>Übernahme</dt><dd>≥ 30 % eines Reviers genommen: +20 % der Fläche als Bonus</dd>
       </dl>
     </section>
   </div>
@@ -270,9 +273,11 @@ svg.leaflet-zoom-animated{will-change:transform}
 
   const areaKm2=g=>g?turf.area(g)/1e6:0;
 
-  const EXCL=1.2;
+  const EXCL=1.2, HOLD_DAYS=7, HOLD_F=1.3, NEULAND_EXTRA=1.0, TAKE_PCT=0.3, TAKE_BONUS=0.2;
   function unionAll(list){ let u=null; for(const g of list){ if(!g) continue; try{ u=u?(turf.union(u,g)||u):g; }catch(e){} } return u; }
   function safeDiff(a,b){ if(!a) return null; if(!b) return a; try{ return turf.difference(a,b); }catch(e){ return a; } }
+  function safeInter(a,b){ if(!a||!b) return null; try{ return turf.intersect(a,b); }catch(e){ return null; } }
+  const addDays=(ds,n)=>{const d=new Date(ds+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
   function compute(){
     const corrKm=state.corridor/1000;
     const fl=state.flights.slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
@@ -282,34 +287,57 @@ svg.leaflet-zoom-animated{will-change:transform}
     if(!days.length){state.result={terr,events,snaps,fl:[]};return;}
     const end=todayStr()>days[days.length-1]?todayStr():days[days.length-1];
     let d=new Date(days[0]+'T00:00:00Z'); const endD=new Date(end+'T00:00:00Z');
-    let lastScore=null;
+    let everFlown=null; const exclByDay={}; let last=null;
     while(d<=endD){
       const ds=d.toISOString().slice(0,10);
       const todays=(byDay[ds]||[]).map(f=>({f,fg:flightGeometry(f,corrKm)}));
       if(todays.length){
+        const before={}; for(const q in terr) before[q]=terr[q];
         const dayUnion=unionAll(todays.map(x=>x.fg.geom));
+        const byPilot={}; todays.forEach(x=>{(byPilot[x.f.pilot]=byPilot[x.f.pilot]||[]).push(x.fg.geom);});
+        const mineOf={}; for(const p in byPilot) mineOf[p]=unionAll(byPilot[p]);
+        const bonus={}, bonusTxt={};
+        for(const p in mineOf){
+          const mine=mineOf[p]; let b=0, txt=[];
+          const neu=areaKm2(safeDiff(mine,everFlown));
+          if(neu>0.01){ b+=neu*NEULAND_EXTRA; txt.push('Neuland '+fmt(neu,2)); }
+          for(const q in before){ if(q===p||!before[q]) continue; const tq=areaKm2(before[q]); if(tq<0.01) continue;
+            const taken=areaKm2(safeInter(before[q],mine)); if(taken>=TAKE_PCT*tq){ b+=taken*TAKE_BONUS; txt.push('Übernahme '+esc(q)+' '+Math.round(taken/tq*100)+'%'); } }
+          bonus[p]=b; bonusTxt[p]=txt;
+        }
         const dayEvents=[];
         for(const {f,fg} of todays){
           let captured=0;
-          for(const q of Object.keys(terr)){ if(q===f.pilot||!terr[q]) continue; try{ const it=turf.intersect(terr[q],fg.geom); if(it) captured+=areaKm2(it); }catch(e){} }
-          const ev={f,shape:fg.shape,area:areaKm2(fg.geom),captured:Math.min(captured,areaKm2(fg.geom)),len:fg.len,excl:0,geom:fg.geom};
+          for(const q in before){ if(q===f.pilot||!before[q]) continue; captured+=areaKm2(safeInter(before[q],fg.geom)); }
+          const ev={f,shape:fg.shape,area:areaKm2(fg.geom),captured:Math.min(captured,areaKm2(fg.geom)),len:fg.len,excl:0,geom:fg.geom,bonus:bonus[f.pilot]||0,bonusTxt:bonusTxt[f.pilot]||[]};
           events.push(ev); dayEvents.push(ev);
         }
         for(const q of Object.keys(terr)) terr[q]=safeDiff(terr[q],dayUnion);
-        const byPilot={}; todays.forEach(x=>{(byPilot[x.f.pilot]=byPilot[x.f.pilot]||[]).push(x.fg.geom);});
-        for(const p in byPilot){ const mine=unionAll(byPilot[p]); terr[p]=terr[p]?(unionAll([terr[p],mine])||mine):mine; }
-        const areas={}, score={}, exclA={};
+        for(const p in mineOf) terr[p]=terr[p]?(unionAll([terr[p],mineOf[p]])||mineOf[p]):mineOf[p];
+        everFlown=unionAll([everFlown,dayUnion]);
+        const areas={}, base={}, exclA={}, longA={}, exclG={};
         const pilots=Object.keys(terr).filter(p=>terr[p]);
+        const oldRef=exclByDay[addDays(ds,-HOLD_DAYS)]||{};
         for(const p of pilots){
           const total=areaKm2(terr[p]);
           const others=unionAll(pilots.filter(q=>q!==p).map(q=>terr[q]));
-          const excl=areaKm2(safeDiff(terr[p],others));
-          areas[p]=total; score[p]=excl*EXCL+(total-excl); exclA[p]=excl;
+          const eg=safeDiff(terr[p],others); exclG[p]=eg;
+          const excl=areaKm2(eg);
+          const lg=oldRef[p]?areaKm2(safeInter(eg,oldRef[p])):0;
+          areas[p]=total; exclA[p]=excl; longA[p]=lg; base[p]=(excl-lg)*EXCL+lg*HOLD_F+(total-excl);
           dayEvents.filter(e=>e.f.pilot===p).forEach(e=>{ e.excl=areaKm2(safeDiff(e.geom,others)); delete e.geom; });
         }
-        lastScore={areas,score,excl:exclA};
-      }
-      snaps.push({date:ds,areas:lastScore?{...lastScore.areas}:{},score:lastScore?{...lastScore.score}:{},excl:lastScore?{...lastScore.excl}:{}});
+        last={areas,base,excl:exclA,longHeld:longA,exclG};
+        const score={}; for(const p in base) score[p]=base[p]+(bonus[p]||0);
+        snaps.push({date:ds,areas:{...areas},score,base:{...base},excl:{...exclA},longHeld:{...longA},bonus});
+      }else if(last){
+        const oldRef=exclByDay[addDays(ds,-HOLD_DAYS)]||{};
+        const longA={}, base={};
+        for(const p in last.areas){ const eg=last.exclG[p]; const lg=oldRef[p]?areaKm2(safeInter(eg,oldRef[p])):0; longA[p]=lg; base[p]=(last.excl[p]-lg)*EXCL+lg*HOLD_F+(last.areas[p]-last.excl[p]); }
+        last.longHeld=longA; last.base=base;
+        snaps.push({date:ds,areas:{...last.areas},score:{...base},base:{...base},excl:{...last.excl},longHeld:longA,bonus:{}});
+      }else{ snaps.push({date:ds,areas:{},score:{},base:{},excl:{},longHeld:{},bonus:{}}); }
+      exclByDay[ds]=last?last.exclG:{};
       d.setUTCDate(d.getUTCDate()+1);
     }
     state.result={terr,events,snaps,fl};
@@ -331,9 +359,9 @@ svg.leaflet-zoom-animated{will-change:transform}
   function render(){
     const r=state.result;
     const bil=state.tab==='bilanz'; $('#scoreTable').hidden=bil; $('#bilanzTable').hidden=!bil;
-    if(bil&&r&&r.snaps.length){ const last=r.snaps[r.snaps.length-1]; const ps=[...new Set(r.fl.map(f=>f.pilot))].filter(p=>!state.hidden.has(p)).map(p=>({p,t:last.areas[p]||0,x:last.excl[p]||0,s:last.score[p]||0})).sort((a,b)=>b.s-a.s);
-      $('#bilanzRows').innerHTML=ps.map(x=>`<tr><td><span class="pilot"><span class="sw" style="background:${colorOf(x.p)}"></span>${esc(x.p)}</span></td><td class="num">${fmt(x.t,2)}</td><td class="num">${fmt(x.x,2)}</td><td class="num">${fmt(x.t-x.x,2)}</td><td class="num">${fmt(x.s,2)}</td></tr>`).join('');
-      $('#scoreNote').textContent='Stand heute. Punkte/Tag = Allein × 1,2 + Geteilt × 1.'; }
+    if(bil&&r&&r.snaps.length){ const last=r.snaps[r.snaps.length-1]; const ps=[...new Set(r.fl.map(f=>f.pilot))].filter(p=>!state.hidden.has(p)).map(p=>({p,t:last.areas[p]||0,x:last.excl[p]||0,l:last.longHeld[p]||0,s:last.score[p]||0,b:last.bonus[p]||0})).sort((a,b)=>b.s-a.s);
+      $('#bilanzRows').innerHTML=ps.map(x=>`<tr><td><span class="pilot"><span class="sw" style="background:${colorOf(x.p)}"></span>${esc(x.p)}</span></td><td class="num">${fmt(x.t,2)}</td><td class="num">${fmt(x.x,2)}${x.l>0.005?`<br><span class="unit">7+ Tage ${fmt(x.l,2)}</span>`:''}</td><td class="num">${fmt(x.t-x.x,2)}</td><td class="num">${fmt(x.s,2)}${x.b>0.005?`<br><span class="unit">inkl. Bonus ${fmt(x.b,2)}</span>`:''}</td></tr>`).join('');
+      $('#scoreNote').textContent='Stand heute. Punkte/Tag = Allein × 1,2 (ab 7 Tagen × 1,3) + Geteilt × 1 + Tagesbonus.'; }
     const rows=scores(); const held=state.tab==='held';
     $('#scoreHead').textContent=held?'km² jetzt':'Punkte';
     $('#scoreRows').innerHTML=rows.length?rows.map((x,i)=>`<tr><td class="rank">${i+1}</td><td><span class="pilot"><span class="sw" style="background:${colorOf(x.p)}"></span>${esc(x.p)}</span></td><td class="num">${fmt(x.v,held?2:1)}${held?`<br><span class="unit">allein ${fmt(x.x,2)}</span>`:''}</td></tr>`).join(''):'<tr><td colspan="3" class="note">Noch keine Flüge.</td></tr>';
@@ -341,7 +369,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     const S=state.sort; const keyOf=e=>S.key==='time'?e.f.date+e.f.time:S.key==='pilot'?e.f.pilot.toLowerCase():S.key==='area'?e.area:S.key==='captured'?e.captured:S.key==='excl'?e.excl:e.len;
     const evs=r?r.events.filter(e=>!state.hidden.has(e.f.pilot)).sort((a,b)=>{const x=keyOf(a),y=keyOf(b);return (x<y?-1:x>y?1:0)*S.dir;}):[];
     document.querySelectorAll('.flights th[data-key]').forEach(th=>{th.textContent=th.dataset.label+(th.dataset.key===S.key?(S.dir>0?' ▲':' ▼'):'');});
-    $('#flightRows').innerHTML=evs.length?evs.map(e=>`<tr><td>${e.f.date}<br><span class="unit">${e.f.time.slice(0,2)}:${e.f.time.slice(2,4)} UTC</span></td><td><span class="pilot"><span class="sw" style="background:${colorOf(e.f.pilot)}"></span>${esc(e.f.pilot)}</span></td><td><span class="tag">${e.shape}</span><br><span class="unit">${fmt(e.len,0)} km Track</span></td><td class="num">${fmt(e.area,2)}</td><td class="num">${fmt(e.excl,2)}</td><td class="num">${e.captured>0.005?fmt(e.captured,2):'–'}</td></tr>`).join(''):'<tr><td colspan="6" class="note">Noch keine Flüge geladen.</td></tr>';
+    $('#flightRows').innerHTML=evs.length?evs.map(e=>`<tr><td>${e.f.date}<br><span class="unit">${e.f.time.slice(0,2)}:${e.f.time.slice(2,4)} UTC</span></td><td><span class="pilot"><span class="sw" style="background:${colorOf(e.f.pilot)}"></span>${esc(e.f.pilot)}</span></td><td><span class="tag">${e.shape}</span><br><span class="unit">${fmt(e.len,0)} km Track</span>${e.bonusTxt.length?`<br><span class="unit" style="color:var(--accent)">Bonus: ${e.bonusTxt.join(', ')}</span>`:''}</td><td class="num">${fmt(e.area,2)}</td><td class="num">${fmt(e.excl,2)}</td><td class="num">${e.captured>0.005?fmt(e.captured,2):'–'}</td></tr>`).join(''):'<tr><td colspan="6" class="note">Noch keine Flüge geladen.</td></tr>';
     renderMap();
   }
 
