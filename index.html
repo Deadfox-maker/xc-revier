@@ -142,7 +142,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v30 (27.09. 22:30)</span>
+  <span class="lbl" id="version">v31 (27.09. 22:36)</span>
 </header>
 
 <div class="wrap">
@@ -231,7 +231,7 @@ svg.leaflet-zoom-animated{will-change:transform}
         <dt>Punkte</dt><dd>km² pro Tag; allein × 1,2, geteilt × 1</dd>
         <dt>Haltebonus</dt><dd>seit 7 Tagen allein gehalten × 1,3</dd>
         <dt>Neuland</dt><dd>30 Tage von niemandem geflogen: +100 % × Klassenfaktor (A 1,0 / B 0,9 / C 0,7 / D 0,5 / unbekannt 0,5)</dd>
-        <dt>Eigenes Neuland</dt><dd>vom Piloten selbst nie geflogen: +30 % × Klassenfaktor</dd>
+        <dt>Erkundung</dt><dd>vom Piloten selbst in der Saison nie geflogen: +30 % × Klassenfaktor</dd>
         <dt>Übernahme</dt><dd>≥ 30 % eines fremden Reviers genommen: +20 % der insgesamt genommenen Fläche, einmal pro Tag</dd>
       </dl>
     </section>
@@ -358,7 +358,7 @@ svg.leaflet-zoom-animated{will-change:transform}
           const neu=areaKm2(safeDiff(incGeom,recent));
           if(neu>0.01){ b+=neu*NEULAND_EXTRA*cf; txt.push('Neuland '+fmt(neu,2)+' km² × 100 % × Klasse '+cf+' = '+fmt(neu*NEULAND_EXTRA*cf,2)); }
           const pers=areaKm2(safeDiff(incGeom,mineEver[p]));
-          if(pers>0.01){ b+=pers*PERSONAL_EXTRA*cf; txt.push('eigenes Neuland '+fmt(pers,2)+' km² × 30 % × Klasse '+cf+' = '+fmt(pers*PERSONAL_EXTRA*cf,2)); }
+          if(pers>0.01){ b+=pers*PERSONAL_EXTRA*cf; txt.push('Erkundung '+fmt(pers,2)+' km² × 30 % × Klasse '+cf+' = '+fmt(pers*PERSONAL_EXTRA*cf,2)); }
           let qualifies=false; const takeTxt=[];
           for(const q in before){ if(q===p||!before[q]) continue; const tq=areaKm2(before[q]); if(tq<0.01) continue;
             const taken=areaKm2(safeInter(before[q],incGeom));
