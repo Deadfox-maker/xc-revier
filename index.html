@@ -89,7 +89,9 @@ tr:last-child td{border-bottom:0}
 .rules dt{font-weight:600;color:var(--ink-2)}
 .rules dd{margin:0;font-family:var(--font-mono);font-size:13px}
 .stack{display:grid;gap:16px}
-tr[data-p].hl{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+tr[data-p].hl td{background:color-mix(in srgb,var(--accent) 22%,var(--panel));}
+tr[data-p].hl td:first-child{box-shadow:inset 4px 0 0 var(--accent)}
+tr[data-p].hl .pilot{color:var(--accent);font-weight:700}
 tr[data-p]{cursor:default}
 .legend button.hl{outline:2px solid var(--accent);outline-offset:1px}
 .leaflet-interactive.dim{fill-opacity:.12!important;opacity:.5}
@@ -140,7 +142,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v26 (27.09.)</span>
+  <span class="lbl" id="version">v29 (27.09. 22:24)</span>
 </header>
 
 <div class="wrap">
@@ -441,7 +443,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     state.hl=p||state.pinned||null;
     const hn=$('#hoverName');
     if(state.hl&&state.result&&state.result.terr[state.hl]){ hn.innerHTML=`<span class="sw" style="background:${colorOf(state.hl)}"></span>${esc(state.hl)} <small>${fmt(areaKm2(state.result.terr[state.hl]),2)} km² gehalten</small>`; hn.hidden=false; } else hn.hidden=true;
-    if(fromMap&&state.hl){ const rows=[...document.querySelectorAll('tr[data-p]')].filter(tr=>tr.dataset.p===state.hl&&tr.offsetParent); rows.forEach(tr=>{ const r=tr.getBoundingClientRect(); if(r.top<0||r.bottom>innerHeight) tr.scrollIntoView({block:'nearest',behavior:'smooth'}); }); }
+    if(fromMap&&state.hl){ const row=[...document.querySelectorAll('#scoreRows tr[data-p],#bilanzRows tr[data-p]')].find(tr=>tr.dataset.p===state.hl&&tr.offsetParent); if(row){ const r=row.getBoundingClientRect(); if(r.top<0||r.bottom>innerHeight) row.scrollIntoView({block:'center',behavior:'smooth'}); } }
     document.querySelectorAll('tr[data-p]').forEach(tr=>tr.classList.toggle('hl',!!state.hl&&tr.dataset.p===state.hl));
     document.querySelectorAll('.legend button[data-p]').forEach(b=>b.classList.toggle('hl',!!state.hl&&b.dataset.p===state.hl));
     for(const q in terrLayers){ terrLayers[q].eachLayer(l=>{ if(!l._path) return; l._path.classList.toggle('dim',!!state.hl&&q!==state.hl); l._path.classList.toggle('hot',!!state.hl&&q===state.hl); }); }
@@ -457,6 +459,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     (pref==='topo'?topo:tiles).addTo(map);
     L.control.layers({'Straßenkarte':tiles,'Gelände (OpenTopoMap)':topo},null,{position:'topright'}).addTo(map);
     map.on('baselayerchange',e=>{ try{ localStorage.setItem('xc-basemap',e.layer===topo?'topo':'osm'); }catch(x){} });
+    map.createPane('tracks'); map.getPane('tracks').style.zIndex=350; map.getPane('tracks').style.pointerEvents='none';
     overlay=L.layerGroup().addTo(map);
   }
   function renderMap(){
@@ -467,13 +470,13 @@ svg.leaflet-zoom-animated{will-change:transform}
       for(const p in r.terr){
         if(!r.terr[p]||state.hidden.has(p)) continue;
         const c=hexOf(p);
-        const lyr=L.geoJSON(r.terr[p],{style:{color:c,weight:1.5,fillColor:c,fillOpacity:.4}}).bindTooltip(`${esc(p)}: ${fmt(areaKm2(r.terr[p]),2)} km²`,{sticky:true});
+        const lyr=L.geoJSON(r.terr[p],{interactive:true,bubblingMouseEvents:false,style:{color:c,weight:1.5,fillColor:c,fillOpacity:.4}}).bindTooltip(`${esc(p)}: ${fmt(areaKm2(r.terr[p]),2)} km²`,{sticky:true});
         lyr.on('mouseover',()=>setHL(p,true)); lyr.on('mouseout',()=>setHL(null)); lyr.on('click',()=>{ state.pinned=state.pinned===p?null:p; setHL(p,true); });
         lyr.addTo(overlay); bounds.push(lyr.getBounds()); terrLayers[p]=lyr;
       }
       r.fl.filter(f=>!state.hidden.has(f.pilot)).forEach(f=>{
         const ll=f.coords.map(c=>[c[1],c[0]]);
-        const pl=L.polyline(ll,{color:hexOf(f.pilot),weight:1.5,dashArray:'4 3',opacity:.85,interactive:false});
+        const pl=L.polyline(ll,{color:hexOf(f.pilot),weight:1.5,dashArray:'4 3',opacity:.85,interactive:false,pane:'tracks'});
         pl.addTo(overlay); bounds.push(pl.getBounds());
       });
     }
