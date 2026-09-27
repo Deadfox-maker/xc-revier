@@ -164,7 +164,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     <section class="panel">
       <div class="controls" style="padding-bottom:4px"><h2>Flüge</h2></div>
       <table class="flights">
-        <thead><tr><th>Datum</th><th>Pilot</th><th>Form</th><th class="num">Fläche</th><th class="num">Erobert</th></tr></thead>
+        <thead><tr><th>Datum</th><th>Pilot</th><th>Form</th><th class="num">Fläche</th><th class="num">Genommen</th></tr></thead>
         <tbody id="flightRows"></tbody>
       </table>
     </section>
@@ -191,8 +191,9 @@ svg.leaflet-zoom-animated{will-change:transform}
         <dt>Linie</dt><dd>Korridor ±Korridorbreite um den Track</dd>
         <dt>Schleife</dt><dd>alles, was der Track umschließt, wird gefüllt</dd>
         <dt>Schluss</dt><dd>≤ 3 km oder ≤ 20 % der Strecke gilt als geschlossen</dd>
-        <dt>Übernahme</dt><dd>späterer Tag gewinnt; am selben Tag gewinnt der größere Flug</dd>
-        <dt>Punkte</dt><dd>gehaltene km² pro Tag, summiert</dd>
+        <dt>Gleicher Tag</dt><dd>gemeinsam abgeflogene Fläche gehört allen</dd>
+        <dt>Übernahme</dt><dd>späterer Tag nimmt allen bisherigen Besitzern den Teil</dd>
+        <dt>Punkte</dt><dd>km² pro Tag; allein gehalten × 1,2, geteilt × 1</dd>
       </dl>
     </section>
   </div>
@@ -259,6 +260,9 @@ svg.leaflet-zoom-animated{will-change:transform}
 
   const areaKm2=g=>g?turf.area(g)/1e6:0;
 
+  const EXCL=1.2;
+  function unionAll(list){ let u=null; for(const g of list){ if(!g) continue; try{ u=u?(turf.union(u,g)||u):g; }catch(e){} } return u; }
+  function safeDiff(a,b){ if(!a) return null; if(!b) return a; try{ return turf.difference(a,b); }catch(e){ return a; } }
   function compute(){
     const corrKm=state.corridor/1000;
     const fl=state.flights.slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
@@ -268,24 +272,31 @@ svg.leaflet-zoom-animated{will-change:transform}
     if(!days.length){state.result={terr,events,snaps,fl:[]};return;}
     const end=todayStr()>days[days.length-1]?todayStr():days[days.length-1];
     let d=new Date(days[0]+'T00:00:00Z'); const endD=new Date(end+'T00:00:00Z');
+    let lastScore=null;
     while(d<=endD){
       const ds=d.toISOString().slice(0,10);
-      const dayFlights=(byDay[ds]||[]).map(f=>({f,fg:flightGeometry(f,corrKm)}));
-      dayFlights.sort((a,b)=>turf.area(a.fg.geom)-turf.area(b.fg.geom));
-      for(const {f,fg} of dayFlights){
-        let captured=0;
-        for(const q of Object.keys(terr)){
-          if(q===f.pilot||!terr[q]) continue;
-          try{
-            const inter=turf.intersect(terr[q],fg.geom);
-            if(inter){ captured+=areaKm2(inter); terr[q]=turf.difference(terr[q],fg.geom)||null; }
-          }catch(e){}
+      const todays=(byDay[ds]||[]).map(f=>({f,fg:flightGeometry(f,corrKm)}));
+      if(todays.length){
+        const dayUnion=unionAll(todays.map(x=>x.fg.geom));
+        for(const {f,fg} of todays){
+          let captured=0;
+          for(const q of Object.keys(terr)){ if(q===f.pilot||!terr[q]) continue; try{ const it=turf.intersect(terr[q],fg.geom); if(it) captured+=areaKm2(it); }catch(e){} }
+          events.push({f,shape:fg.shape,area:areaKm2(fg.geom),captured:Math.min(captured,areaKm2(fg.geom)),len:fg.len});
         }
-        try{ terr[f.pilot]=terr[f.pilot]?(turf.union(terr[f.pilot],fg.geom)||terr[f.pilot]):fg.geom; }catch(e){ terr[f.pilot]=terr[f.pilot]||fg.geom; }
-        events.push({f,shape:fg.shape,area:areaKm2(fg.geom),captured,len:fg.len});
+        for(const q of Object.keys(terr)) terr[q]=safeDiff(terr[q],dayUnion);
+        const byPilot={}; todays.forEach(x=>{(byPilot[x.f.pilot]=byPilot[x.f.pilot]||[]).push(x.fg.geom);});
+        for(const p in byPilot){ const mine=unionAll(byPilot[p]); terr[p]=terr[p]?(unionAll([terr[p],mine])||mine):mine; }
+        const areas={}, score={};
+        const pilots=Object.keys(terr).filter(p=>terr[p]);
+        for(const p of pilots){
+          const total=areaKm2(terr[p]);
+          const others=unionAll(pilots.filter(q=>q!==p).map(q=>terr[q]));
+          const excl=areaKm2(safeDiff(terr[p],others));
+          areas[p]=total; score[p]=excl*EXCL+(total-excl);
+        }
+        lastScore={areas,score};
       }
-      const areas={}; for(const p in terr) areas[p]=areaKm2(terr[p]);
-      snaps.push({date:ds,areas});
+      snaps.push({date:ds,areas:lastScore?{...lastScore.areas}:{},score:lastScore?{...lastScore.score}:{}});
       d.setUTCDate(d.getUTCDate()+1);
     }
     state.result={terr,events,snaps,fl};
@@ -295,7 +306,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     const r=state.result; if(!r||!r.snaps.length) return [];
     const today=todayStr(); const last=r.snaps[r.snaps.length-1];
     const pilots=[...new Set(r.fl.map(f=>f.pilot))];
-    const sum=pred=>{const o={};pilots.forEach(p=>o[p]=0);r.snaps.filter(s=>pred(s.date)).forEach(s=>pilots.forEach(p=>o[p]+=s.areas[p]||0));return o;};
+    const sum=pred=>{const o={};pilots.forEach(p=>o[p]=0);r.snaps.filter(s=>pred(s.date)).forEach(s=>pilots.forEach(p=>o[p]+=s.score[p]||0));return o;};
     let o;
     if(state.tab==='day') o=sum(ds=>ds===today);
     else if(state.tab==='month') o=sum(ds=>ds.slice(0,7)===today.slice(0,7));
@@ -307,9 +318,9 @@ svg.leaflet-zoom-animated{will-change:transform}
   function render(){
     const r=state.result;
     const rows=scores(); const held=state.tab==='held';
-    $('#scoreHead').textContent=held?'km² jetzt':'km²·Tage';
+    $('#scoreHead').textContent=held?'km² jetzt':'Punkte';
     $('#scoreRows').innerHTML=rows.length?rows.map((x,i)=>`<tr><td class="rank">${i+1}</td><td><span class="pilot"><span class="sw" style="background:${colorOf(x.p)}"></span>${esc(x.p)}</span></td><td class="num">${fmt(x.v,held?2:1)}</td></tr>`).join(''):'<tr><td colspan="3" class="note">Noch keine Flüge.</td></tr>';
-    $('#scoreNote').textContent=held?'Fläche, die heute noch jedem gehört.':'Summe der täglich gehaltenen Fläche im Zeitraum.';
+    $('#scoreNote').textContent=held?'Fläche, die heute noch jedem gehört (geteilte Fläche zählt bei jedem).':'Punkte = gehaltene km² pro Tag, allein gehaltene Fläche × 1,2, geteilte × 1.';
     $('#flightRows').innerHTML=r&&r.events.length?r.events.slice().reverse().map(e=>`<tr><td>${e.f.date}<br><span class="unit">${e.f.time.slice(0,2)}:${e.f.time.slice(2,4)} UTC</span></td><td><span class="pilot"><span class="sw" style="background:${colorOf(e.f.pilot)}"></span>${esc(e.f.pilot)}</span></td><td><span class="tag">${e.shape}</span><br><span class="unit">${fmt(e.len,0)} km Track</span></td><td class="num">${fmt(e.area,2)}</td><td class="num">${e.captured>0.005?fmt(e.captured,2):'–'}</td></tr>`).join(''):'<tr><td colspan="5" class="note">Noch keine Flüge geladen.</td></tr>';
     renderMap();
   }
