@@ -281,7 +281,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v68 (28.09. 18:20)</span>
+  <span class="lbl" id="version">v69 (28.09. 18:30)</span>
   <button type="button" class="mgear" id="mGear" aria-label="Hochladen und Einstellungen">⚙</button>
 </header>
 <nav class="mnav" id="mNav"><button type="button" data-v="map" aria-current="true"><b>🗺</b>Karte</button><button type="button" data-v="score"><b>🏆</b>Rangliste</button><button type="button" data-v="fl"><b>✈</b>Flüge</button><button type="button" data-v="rules"><b>📖</b>Regeln</button></nav>
@@ -544,14 +544,23 @@ svg.leaflet-zoom-animated{will-change:transform}
   const addDays=(ds,n)=>{const d=new Date(ds+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
   const temps={}; const places={};
   const placeKey=f=>f.coords&&f.coords[0]?f.coords[0][1].toFixed(4)+','+f.coords[0][0].toFixed(4):'';
-  const placeOf=f=>{ const p=places[placeKey(f)]; return p&&p.v===2?p:null; };
+  const manualTakeoffs=[];
+  const manualOf=f=>{ if(!f.coords||!f.coords[0]) return null; let best=null, bd=1.5; for(const t of manualTakeoffs){ const d=kmBetween(f.coords[0],[t.lon,t.lat]); if(d<bd){ bd=d; best=t; } } return best?{v:3,n:best.name,site:true,manual:true}:null; };
+  const placeOf=f=>{ const m=manualOf(f); if(m) return m; const p=places[placeKey(f)]; return p&&p.v===3?p:null; };
   const kmBetween=(a,b)=>{ const kx=111.32*Math.cos(a[1]*Math.PI/180), dx=(a[0]-b[0])*kx, dy=(a[1]-b[1])*110.57; return Math.sqrt(dx*dx+dy*dy); };
   async function fetchPlaces(flights,tok){
-    let need=flights.filter(f=>f.coords&&f.coords.length&&!placeOf(f));
+    let need=flights.filter(f=>f.coords&&f.coords.length&&!placeOf(f)); const pgeSites=[];
     // schon bekannte Startplätze in der Nähe (bis 1,5 km) direkt übernehmen, ohne neue Abfrage
-    const known=Object.keys(places).filter(k=>places[k]&&places[k].v===2&&places[k].site).map(k=>({k,c:k.split(',').reverse().map(Number)}));
+    const known=Object.keys(places).filter(k=>places[k]&&places[k].v===3&&places[k].site).map(k=>({k,c:k.split(',').reverse().map(Number)}));
     need=need.filter(f=>{ const st=f.coords[0]; const hit=known.find(x=>kmBetween(st,x.c)<1.5); if(hit){ places[placeKey(f)]=places[hit.k]; return false; } return true; });
     if(!need.length) return;
+    // 0. ParaglidingEarth (Startplatz-Datenbank der Szene), je Startpunkt, 4 parallel
+    { const uq={}; need.forEach(f=>{ const [lon,lat]=f.coords[0]; uq[lat.toFixed(2)+','+lon.toFixed(2)]=[lat,lon]; }); const list=Object.values(uq); let done=0, pgeOk=false;
+      const one=async([la,lo])=>{ const ac=new AbortController(); const to=setTimeout(()=>ac.abort(),8000);
+        try{ const r=await fetch(`https://www.paraglidingearth.com/api/geojson/getAroundLatLngSites.php?lat=${la.toFixed(4)}&lng=${lo.toFixed(4)}&distance=3&limit=5`,{signal:ac.signal}); clearTimeout(to); if(!r.ok) return; const j=await r.json(); pgeOk=true;
+          (j.features||[]).forEach(ft=>{ const pr=ft.properties||{}; const c=ft.geometry&&ft.geometry.coordinates; if(!pr.name||!c) return; pgeSites.push({n:String(pr.name).trim(),c:[+c[0],+c[1]],land:false}); }); }catch(e){ clearTimeout(to); } };
+      for(let k=0;k<list.length;k+=4){ if(busyOn) busy('Suche Startplätze (ParaglidingEarth '+Math.min(k+4,list.length)+' von '+list.length+')',0.05+0.05*k/list.length); await Promise.all(list.slice(k,k+4).map(one)); if(tok!==calcTok) return; if(k===0&&!pgeOk) break; }
+    }
     // 1. Startplätze aus OpenStreetMap (Overpass): eine Abfrage für alle Startpunkte, mit Zeitlimit
     const uniq={}; need.forEach(f=>{ const [lon,lat]=f.coords[0]; uniq[lat.toFixed(2)+','+lon.toFixed(2)]=[lat,lon]; });
     const pts=Object.values(uniq); const sites=[];
@@ -572,12 +581,12 @@ svg.leaflet-zoom-animated{will-change:transform}
     for(const f of need){
       i++; const pk=placeKey(f); if(placeOf(f)) continue;
       const st=f.coords[0]; let best=null, bd=2.0;
-      for(const x of sites){ if(x.land) continue; const d=kmBetween(st,x.c); if(d<bd){ bd=d; best=x; } }
-      if(best){ places[pk]={v:2,n:best.n,site:true}; continue; }
-      const near=Object.keys(places).find(k=>places[k]&&places[k].v===2&&!places[k].site&&kmBetween(st,k.split(',').reverse().map(Number))<1.5);
+      for(const x of pgeSites.concat(sites)){ if(x.land) continue; const d=kmBetween(st,x.c); if(d<bd){ bd=d; best=x; } }
+      if(best){ places[pk]={v:3,n:best.n,site:true}; continue; }
+      const near=Object.keys(places).find(k=>places[k]&&places[k].v===3&&!places[k].site&&kmBetween(st,k.split(',').reverse().map(Number))<1.5);
       if(near){ places[pk]=places[near]; continue; }
       if(++nomi>40) continue; if(busyOn) busy('Suche Ortsnamen ('+i+' von '+need.length+')',0.1+0.05*i/need.length);
-      try{ const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${st[1].toFixed(5)}&lon=${st[0].toFixed(5)}&zoom=14&accept-language=de`); if(r.ok){ const j=await r.json(); const a=j.address||{}; const name=a.village||a.hamlet||a.town||a.suburb||a.municipality||a.city||a.locality||j.name||''; places[pk]={v:2,n:name,r:a.county||a.state||'',site:false}; } }catch(e){}
+      try{ const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${st[1].toFixed(5)}&lon=${st[0].toFixed(5)}&zoom=14&accept-language=de`); if(r.ok){ const j=await r.json(); const a=j.address||{}; const name=a.village||a.hamlet||a.town||a.suburb||a.municipality||a.city||a.locality||j.name||''; places[pk]={v:3,n:name,r:a.county||a.state||'',site:false}; } }catch(e){}
       await new Promise(r=>setTimeout(r,1100)); if(tok!==calcTok) return;
     }
   }
@@ -1005,11 +1014,13 @@ svg.leaflet-zoom-animated{will-change:transform}
     const known=f.glider&&gliderClass(f.glider);
     return `<div class="editbox" data-key="${esc(fkey(f))}">
       <div class="lbl">Pilot</div><input type="text" list="pilotNames" class="ename" placeholder="Name" value="${f.pilot==='Unbekannt'?'':esc(f.pilot)}"><datalist id="pilotNames">${names.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+      <div class="lbl">Startplatz (gilt für alle Flüge, die bis 1,5 km daneben starten)</div><input type="text" class="etakeoff" placeholder="z. B. Hohe Wand Ost" value="${(()=>{const pl=placeOf(f); return pl&&pl.site?esc(pl.n):'';})()}">
       <div class="lbl">Schirm</div><select class="eglider">${known?'':`<option value="__keep" selected>${esc(f.glider||'kein Schirm angegeben')} (unverändert)</option>`}${gliderOptions(known?f.glider:'')}</select>
       <div class="lbl">Klasse</div><select class="eclass"><option value="">aus Schirm${cls?' ('+cls+')':''}</option>${['A','B','C','D','CCC'].map(c=>`<option value="${c}" ${f.enClass===c&&f.enClass!==gliderClass(f.glider||'')?'selected':''}>EN-${c}</option>`).join('')}</select>
       ${same>1?`<label class="unit"><input type="checkbox" class="eall"> für alle ${same} Flüge von „${esc(f.pilot)}“ übernehmen</label>`:''}
       <div class="controls" style="padding:6px 0 0;gap:6px"><button type="button" class="btn primary esave">Speichern</button><button type="button" class="btn ecancel">Abbrechen</button><button type="button" class="btn edel" style="margin-left:auto;color:#E24B4A">Flug löschen</button></div></div>`;
   }
+  function nnSame(f,box){ const nn=box.querySelector('.ename').value.trim(); const gv=box.querySelector('.eglider').value; const cv=box.querySelector('.eclass').value; return nn===f.pilot&&(gv==='__keep'||gv===f.glider||(!gv&&!f.glider))&&!cv; }
   async function updateFlights(list,newName,glider,cls,code){
     let n=0, errs=[];
     for(const f of list){
@@ -1031,6 +1042,13 @@ svg.leaflet-zoom-animated{will-change:transform}
     if(e.target.closest('.esave')){
       const nn=box.querySelector('.ename').value.trim(); if(nn.length<2){ showErr('Bitte einen Namen eingeben.'); return; } if(!code){ showErr('Club-Code eingeben.'); return; }
       const gv=box.querySelector('.eglider').value; const glider=(gv==='__keep'||!gv)?null:gv; const cls=box.querySelector('.eclass').value||null;
+      const tkIn=box.querySelector('.etakeoff'); const tkNew=tkIn?tkIn.value.trim():''; const tkOld=(()=>{const pl=placeOf(f); return pl&&pl.site?pl.n:'';})();
+      if(tkNew!==tkOld&&f.coords&&f.coords[0]){ const [lon,lat]=f.coords[0];
+        const rt=await fetch(cfg.supabaseUrl+'/rest/v1/rpc/set_takeoff',{method:'POST',headers:dbHeaders(),body:JSON.stringify({code,p_name:tkNew,p_lat:lat,p_lon:lon})});
+        if(!rt.ok){ showErr('Startplatz speichern fehlgeschlagen (HTTP '+rt.status+'). SQL-Update 5 ausgeführt?'); return; }
+        for(let k=manualTakeoffs.length-1;k>=0;k--){ const t=manualTakeoffs[k]; if(Math.abs(t.lat-lat)<0.009&&Math.abs(t.lon-lon)<0.013) manualTakeoffs.splice(k,1); }
+        if(tkNew.length>=2) manualTakeoffs.push({name:tkNew,lat,lon});
+        const onlyTk=nnSame(f,box); if(onlyTk){ state.editKey=null; render(); busyDone('Startplatz „'+tkNew+'“ gespeichert.'); return; } }
       const all=box.querySelector('.eall')&&box.querySelector('.eall').checked;
       const list=all?state.flights.filter(x=>x.inDb&&x.pilot===f.pilot):[f];
       busy('Speichere '+list.length+(list.length===1?' Flug':' Flüge')+' …',null);
@@ -1132,7 +1150,7 @@ svg.leaflet-zoom-animated{will-change:transform}
   }
   function applyResult(data){
     const byKey={}; state.flights.forEach(f=>byKey[fkey(f)]=f);
-    Object.assign(gliderOfPilot,data.gliderOfPilot||{}); Object.assign(classOfPilot,data.classOfPilot||{}); if(data.temps) for(const k in data.temps){ if(temps[k]==null&&data.temps[k]!=null) temps[k]=data.temps[k]; } if(data.places) for(const k in data.places){ const v=data.places[k]; if(v&&v.v===2&&!placeOf({coords:[k.split(',').reverse().map(Number)]})) places[k]=v; }
+    Object.assign(gliderOfPilot,data.gliderOfPilot||{}); Object.assign(classOfPilot,data.classOfPilot||{}); if(data.temps) for(const k in data.temps){ if(temps[k]==null&&data.temps[k]!=null) temps[k]=data.temps[k]; } if(data.places) for(const k in data.places){ const v=data.places[k]; if(v&&v.v===3&&!placeOf({coords:[k.split(',').reverse().map(Number)]})) places[k]=v; }
     const events=data.events.map(o=>{ const e={...o,f:byKey[o.k]}; delete e.k; return e; }).filter(e=>e.f);
     state.result={terr:data.terr,snaps:extendSnaps(data.snaps),events,fl:data.fl.map(k=>byKey[k]).filter(Boolean),sig:data.sig};
   }
@@ -1174,6 +1192,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     if(cfg&&cfg.supabaseUrl&&cfg.supabaseKey){
       $('#dbtools').hidden=false;
       try{ $('#clubCode').value=localStorage.getItem('xc-club-code')||''; }catch(e){}
+      try{ const r=await fetch(cfg.supabaseUrl+'/rest/v1/takeoffs?select=name,lat,lon',{headers:dbHeaders()}); if(r.ok) (await r.json()).forEach(t=>manualTakeoffs.push(t)); }catch(e){}
       try{ state.flights=await dbList(); setDb('verbunden, '+state.flights.length+' Flüge'); }
       catch(e){ setDb('nicht erreichbar ('+e.message+')'); }
     }
