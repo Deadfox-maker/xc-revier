@@ -53,6 +53,8 @@ input[type=file]::file-selector-button{font-family:var(--font-body);font-size:15
 .prep{padding:0 14px 10px}
 .prep .row{display:grid;grid-template-columns:minmax(120px,1fr) minmax(160px,1.6fr) minmax(90px,.8fr);gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--line)}
 .prep .row:first-child{border-top:0}
+.prep select optgroup{font-weight:700;font-style:normal;color:var(--ink)}
+.prep select option{color:var(--ink)}
 .prep input,.prep select{font-family:var(--font-body);font-size:14px;padding:5px 7px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);width:100%}
 @media (max-width:520px){.prep .row{grid-template-columns:1fr 1fr}.prep .row .pilot{grid-column:1/-1}}
 .paste{padding:0 14px 12px}
@@ -146,7 +148,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v36 (28.09. 07:06)</span>
+  <span class="lbl" id="version">v37 (28.09. 07:23)</span>
 </header>
 
 <div class="wrap">
@@ -261,7 +263,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
   function parseIGC(text,fallback){
     const lines=text.split(/\r?\n/);
-    let date=null,pilot=null,glider=null,coords=[],firstTime=null;
+    let date=null,pilot=null,glider=null,coords=[],firstTime=null,badFix=0;
     for(const ln of lines){
       if(ln.startsWith('HFDTE')){
         const m=ln.match(/(\d{2})(\d{2})(\d{2})/); if(m) date=`20${m[3]}-${m[2]}-${m[1]}`;
@@ -273,6 +275,7 @@ svg.leaflet-zoom-animated{will-change:transform}
         const lat=parseInt(ln.slice(7,9))+parseInt(ln.slice(9,14))/60000, latS=ln[14];
         const lon=parseInt(ln.slice(15,18))+parseInt(ln.slice(18,23))/60000, lonS=ln[23];
         if(isNaN(lat)||isNaN(lon)) continue;
+        if(ln[24]==='V') { badFix++; continue; }
         if(!firstTime) firstTime=ln.slice(1,7);
         coords.push([lonS==='W'?-lon:lon, latS==='S'?-lat:lat]);
       }
@@ -305,10 +308,23 @@ svg.leaflet-zoom-animated{will-change:transform}
   }
 
   const areaKm2=g=>g?turf.area(g)/1e6:0;
+  const MAX_JUMP_KM=30;
+  function validate(f){
+    if(f._val!==undefined) return f._val;
+    const c=f.coords; let maxJump=0;
+    for(let i=0;i<c.length;i++){
+      const [lo,la]=c[i];
+      if(Math.abs(lo)<0.01&&Math.abs(la)<0.01) return f._val='GPS-Punkt bei 0/0 (Nullpunkt)';
+      if(Math.abs(la)>90||Math.abs(lo)>180) return f._val='ungültige Koordinate';
+      if(i){ const d=turf.distance(c[i-1],c[i],{units:'kilometers'}); if(d>maxJump) maxJump=d; }
+    }
+    if(maxJump>MAX_JUMP_KM) return f._val='GPS-Sprung '+fmt(maxJump,0)+' km zwischen zwei Punkten';
+    return f._val=null;
+  }
 
   const EXCL=1.2, HOLD_DAYS=7, HOLD_F=1.3, NEULAND_EXTRA=1.0, NEULAND_DAYS=10, PERSONAL_EXTRA=0.3, TAKE_PCT=0.3, TAKE_BONUS=0.2, FLIGHTDAY_MIN=5;
   const CLASS_F_DEFAULT={A:1.0,B:0.8,C:0.6,D:0.4,CCC:0.2,'?':0.05};
-  const GLIDERS_DEFAULT={"Advance": {"A": ["Alpha", "Alpha 7", "Alpha 8", "Alpha DLS"], "B": ["Epsilon", "Epsilon 10", "Epsilon 9", "Epsilon DLS", "Iota", "Iota 2", "Iota 3", "Iota DLS", "Tau", "Theta"], "C": ["Sigma", "Sigma 11", "Sigma 12", "Sigma 12 SV", "Sigma DLS"], "D": ["Omega XAlps 3", "Omega XAlps 4", "Omega X-Alps"], "CCC": []}, "AirDesign": {"A": ["Eazy 2", "Eazy 3", "Susi 4"], "B": ["Rise 4", "Rise 5", "Vita 2", "Vita 3", "Soar"], "C": ["Volt 4", "Volt 5"], "D": ["Hero 2", "Hero 3", "Hero 4"], "CCC": []}, "BGD": {"A": ["Adam", "Adam 2", "Seed"], "B": ["Epic", "Epic 2", "Base", "Base 2", "Base 3", "Magic"], "C": ["Cure", "Cure 2", "Cure 3", "Lynx", "Lynx 2"], "D": ["Diva", "Diva 2"], "CCC": []}, "Gin": {"A": ["Bolero 6", "Bolero 7", "Calypso"], "B": ["Atlas", "Atlas 2", "Atlas 3", "Explorer", "Explorer 2", "Sprint 4", "Sprint 5", "Evora"], "C": ["Camino", "Camino 2", "Bonanza 2", "Bonanza 3"], "D": ["Leopard", "Leopard 2"], "CCC": ["Boomerang", "Boomerang 11", "Boomerang 12", "Boomerang GTO"]}, "Icaro": {"A": ["Pica", "Pica 2"], "B": ["Xenus", "Xenus 2", "Gravis", "Gravis 2"], "C": ["Maverick", "Maverick 2", "Maverick 3"], "D": [], "CCC": []}, "Independence": {"A": ["Cruiser", "Pioneer"], "B": ["Geronimo", "Geronimo 2"], "C": ["Rasta"], "D": [], "CCC": []}, "Mac Para": {"A": ["Muse 5", "Muse 6"], "B": ["Eden 7", "Eden 8", "Illusion", "Illusion 2"], "C": ["Elan 3", "Elan 4"], "D": ["Magus", "Magus 2"], "CCC": []}, "Niviuk": {"A": ["Koyot 4", "Koyot 5", "Kibo", "Kibo 2"], "B": ["Hook 5", "Hook 6", "Ikuma 2", "Ikuma 3", "Ikuma 3 P"], "C": ["Artik 5", "Artik 6", "Artik 7", "Artik 7 P"], "D": ["Peak 4", "Peak 5", "Peak 6", "Klimber", "Klimber 2", "Klimber 2 P", "Icepeak"], "CCC": ["Icepeak X-One", "Icepeak Evox"]}, "Nova": {"A": ["Prion 5", "Prion 6", "Aonic", "Aonic 2", "Bantam"], "B": ["Ion 6", "Ion 7", "Mentor 6", "Mentor 7", "Mentor 7 Light", "Phantom", "Doubleskin"], "C": ["Sector", "Sector 2", "Codex", "Codex 2", "Codex Light"], "D": ["Xenon", "Xenon 2"], "CCC": []}, "Ozone": {"A": ["Mojo 6", "Mojo 7", "Element 3", "Element 4"], "B": ["Buzz Z6", "Buzz Z7", "Rush 5", "Rush 6", "Geo 6", "Geo 7", "Swift 4", "Swift 5"], "C": ["Delta 4", "Delta 5", "Alpina 4", "Alpina 5", "Photon", "Swift 6"], "D": ["Mantra 7", "Mantra 8", "Zeno", "Zeno 2", "Zeolite", "Zeolite 2", "Zeolite GT", "Zeolite 2 GT", "Photon Light"], "CCC": ["Enzo 3", "Enzo 4"]}, "Phi": {"A": ["Symphonia", "Symphonia 2", "Sonata", "Sonata 2", "Viola", "Viola 2", "Fantasia", "Fantasia 2"], "B": ["Beat", "Beat 2", "Maestro", "Maestro 2", "Maestro X-Alps"], "C": ["Allegro", "Allegro 2", "Allegro X-Alps", "Fantasia X-Alps"], "D": ["Scala", "Scala 2"], "CCC": []}, "Skywalk": {"A": ["Tequila 5", "Tequila 6", "Mescal 5", "Mescal 6", "Masala 4", "Masala 5"], "B": ["Chili 4", "Chili 5", "Arak", "Arak 2", "Arak Air", "Arak Air 2", "Spice", "Spice 2", "Tonic 2"], "C": ["Cayenne 6", "Cayenne 7", "Cumeo", "Cumeo 2", "Mint", "Mint 2"], "D": ["Poison X-Alps", "Poison XAlps", "Poison X-Alps 3", "X-Alps 5"], "CCC": []}, "Supair": {"A": ["Eona", "Eona 2", "Eona 3", "Birdy"], "B": ["Leaf", "Leaf 2", "Leaf 3", "Step", "Step 2", "Step 3"], "C": ["Savage", "Savage 2", "Taska", "Taska 2"], "D": ["Wild", "Wild 2"], "CCC": []}, "Swing": {"A": ["Arcus RS", "Arcus RS Lite", "Mito", "Mito 2"], "B": ["Nyos RS", "Nyos 2 RS", "Arcus 2 RS"], "C": ["Agera RS", "Agera 2 RS", "Nexus", "Nexus 2"], "D": ["Core", "Core 2", "Core 3", "Core 4"], "CCC": []}, "Triple Seven": {"A": ["Pawn", "Pawn 2"], "B": ["Knight", "Knight 2", "Rook 3", "Rook 4"], "C": ["Queen", "Queen 2", "Queen 3", "Bishop"], "D": ["King", "King 2", "Gambit"], "CCC": []}, "UP": {"A": ["Ascent 4", "Ascent 5", "Kibo", "Makalu 4", "Makalu 5"], "B": ["Lhotse", "Lhotse 2", "Lhotse 3", "Summit XC 4", "Summit XC 5"], "C": ["Trango X-Race", "Trango XC 4", "Trango XC 5", "Trango X-Race 2"], "D": ["Meru", "Meru 2", "Meru 3"], "CCC": []}, "Flow": {"A": ["Cosmos", "Cosmos 2"], "B": ["Fusion", "Fusion 2", "Freedom", "Freedom 2"], "C": ["Spectra", "Spectra 2"], "D": ["Mullet", "Mullet 2"], "CCC": ["XCRacer", "XCRacer 2"]}, "Dudek": {"A": ["Optic", "Optic 2"], "B": ["Colt", "Colt 2", "Run&Fly"], "C": ["Hadron 3 XX"], "D": [], "CCC": []}, "Sky Paragliders": {"A": ["Anakis", "Anakis 3", "Anakis 4"], "B": ["Apollo", "Apollo 2", "Apollo 2 Light", "Kudos", "Kudos 2"], "C": ["Exos", "Exos 2", "Zenith"], "D": ["Gaia", "Gaia 2"], "CCC": []}, "Little Cloud": {"A": [], "B": ["Spiruline"], "C": ["Goose", "Goose 2"], "D": ["Urubu King"], "CCC": []}};
+  const GLIDERS_DEFAULT={"Advance": {"A": ["Alpha", "Alpha 7", "Alpha 8", "Alpha DLS"], "B": ["Epsilon", "Epsilon 10", "Epsilon 9", "Epsilon DLS", "Iota", "Iota 2", "Iota 3", "Iota DLS", "Tau", "Theta"], "C": ["Sigma", "Sigma 11", "Sigma 12", "Sigma 12 SV", "Sigma DLS"], "D": ["Omega XAlps 3", "Omega XAlps 4", "Omega X-Alps"], "CCC": []}, "AirDesign": {"A": ["Eazy 2", "Eazy 3", "Susi 4"], "B": ["Rise 4", "Rise 5", "Vita 2", "Vita 3", "Soar"], "C": ["Volt 4", "Volt 5"], "D": ["Hero 2", "Hero 3", "Hero 4"], "CCC": []}, "BGD": {"A": ["Adam", "Adam 2", "Seed"], "B": ["Epic", "Epic 2", "Base", "Base 2", "Base 3", "Magic"], "C": ["Cure", "Cure 2", "Cure 3", "Lynx", "Lynx 2"], "D": ["Diva", "Diva 2"], "CCC": []}, "Gin": {"A": ["Bolero 6", "Bolero 7", "Calypso"], "B": ["Atlas", "Atlas 2", "Atlas 3", "Explorer", "Explorer 2", "Sprint 4", "Sprint 5", "Evora"], "C": ["Camino", "Camino 2", "Bonanza 2", "Bonanza 3"], "D": ["Leopard", "Leopard 2"], "CCC": ["Boomerang", "Boomerang 11", "Boomerang 12", "Boomerang GTO"]}, "Icaro": {"A": ["Pica", "Pica 2"], "B": ["Xenus", "Xenus 2", "Gravis", "Gravis 2"], "C": ["Maverick", "Maverick 2", "Maverick 3"], "D": [], "CCC": []}, "Independence": {"A": ["Cruiser", "Pioneer"], "B": ["Geronimo", "Geronimo 2"], "C": ["Rasta"], "D": [], "CCC": []}, "Mac Para": {"A": ["Muse 5", "Muse 6"], "B": ["Eden 7", "Eden 8", "Illusion", "Illusion 2"], "C": ["Elan 3", "Elan 4"], "D": ["Magus", "Magus 2"], "CCC": []}, "Niviuk": {"A": ["Koyot 4", "Koyot 5", "Kibo", "Kibo 2"], "B": ["Hook 5", "Hook 6", "Ikuma 2", "Ikuma 3", "Ikuma 3 P"], "C": ["Artik 5", "Artik 6", "Artik 7", "Artik 7 P"], "D": ["Peak 4", "Peak 5", "Peak 6", "Klimber", "Klimber 2", "Klimber 2 P", "Icepeak"], "CCC": ["Icepeak X-One", "Icepeak Evox"]}, "Nova": {"A": ["Prion 5", "Prion 6", "Aonic", "Aonic 2", "Bantam"], "B": ["Doubleskin", "Ion", "Ion 4", "Ion 5", "Ion 6", "Ion 7", "Mentor 6", "Mentor 7", "Mentor 7 Light", "Phantom"], "C": ["Sector", "Sector 2", "Codex", "Codex 2", "Codex Light"], "D": ["Xenon", "Xenon 2"], "CCC": []}, "Ozone": {"A": ["Mojo 6", "Mojo 7", "Element 3", "Element 4"], "B": ["Buzz Z6", "Buzz Z7", "Rush 5", "Rush 6", "Geo 6", "Geo 7", "Swift 4", "Swift 5"], "C": ["Delta 4", "Delta 5", "Alpina 4", "Alpina 5", "Photon", "Swift 6"], "D": ["Mantra 7", "Mantra 8", "Zeno", "Zeno 2", "Zeolite", "Zeolite 2", "Zeolite GT", "Zeolite 2 GT", "Photon Light"], "CCC": ["Enzo 3", "Enzo 4"]}, "Phi": {"A": ["Symphonia", "Symphonia 2", "Sonata", "Sonata 2", "Viola", "Viola 2", "Fantasia", "Fantasia 2"], "B": ["Beat", "Beat 2", "Maestro", "Maestro 2", "Maestro X-Alps"], "C": ["Allegro", "Allegro 2", "Allegro X-Alps", "Fantasia X-Alps"], "D": ["Scala", "Scala 2"], "CCC": []}, "Skywalk": {"A": ["Tequila 5", "Tequila 6", "Mescal 5", "Mescal 6", "Masala 4", "Masala 5"], "B": ["Chili 4", "Chili 5", "Arak", "Arak 2", "Arak Air", "Arak Air 2", "Spice", "Spice 2", "Tonic 2"], "C": ["Cayenne 6", "Cayenne 7", "Cumeo", "Cumeo 2", "Mint", "Mint 2"], "D": ["Poison", "Poison 2", "Poison 3", "Poison X-Alps", "Poison X-Alps 3", "Poison XAlps", "X-Alps 5"], "CCC": []}, "Supair": {"A": ["Eona", "Eona 2", "Eona 3", "Birdy"], "B": ["Leaf", "Leaf 2", "Leaf 3", "Step", "Step 2", "Step 3"], "C": ["Savage", "Savage 2", "Taska", "Taska 2"], "D": ["Wild", "Wild 2"], "CCC": []}, "Swing": {"A": ["Arcus RS", "Arcus RS Lite", "Mito", "Mito 2"], "B": ["Nyos RS", "Nyos 2 RS", "Arcus 2 RS"], "C": ["Agera RS", "Agera 2 RS", "Nexus", "Nexus 2"], "D": ["Core", "Core 2", "Core 3", "Core 4"], "CCC": []}, "Triple Seven": {"A": ["Pawn", "Pawn 2"], "B": ["Knight", "Knight 2", "Rook 3", "Rook 4"], "C": ["Queen", "Queen 2", "Queen 3", "Bishop"], "D": ["King", "King 2", "Gambit"], "CCC": []}, "UP": {"A": ["Ascent 4", "Ascent 5", "Kibo", "Makalu 4", "Makalu 5"], "B": ["Lhotse", "Lhotse 2", "Lhotse 3", "Summit XC 4", "Summit XC 5"], "C": ["Trango X-Race", "Trango XC 4", "Trango XC 5", "Trango X-Race 2"], "D": ["Meru", "Meru 2", "Meru 3"], "CCC": []}, "Flow": {"A": ["Cosmos", "Cosmos 2"], "B": ["Fusion", "Fusion 2", "Freedom", "Freedom 2"], "C": ["Spectra", "Spectra 2"], "D": ["Mullet", "Mullet 2"], "CCC": ["XCRacer", "XCRacer 2"]}, "Dudek": {"A": ["Optic", "Optic 2"], "B": ["Colt", "Colt 2", "Run&Fly"], "C": ["Hadron 3 XX"], "D": [], "CCC": []}, "Sky Paragliders": {"A": ["Anakis", "Anakis 3", "Anakis 4"], "B": ["Apollo", "Apollo 2", "Apollo 2 Light", "Kudos", "Kudos 2"], "C": ["Exos", "Exos 2", "Zenith"], "D": ["Gaia", "Gaia 2"], "CCC": []}, "Little Cloud": {"A": [], "B": ["Spiruline"], "C": ["Goose", "Goose 2"], "D": ["Urubu King"], "CCC": []}};
   let gliders=GLIDERS_DEFAULT;
   const norm=x=>' '+String(x).toLowerCase().replace(/([a-z])(\d)/g,'$1 $2').replace(/(\d)([a-z])/g,'$1 $2').replace(/[^a-z0-9]+/g,' ').trim()+' ';
   function gliderClass(name){
@@ -318,11 +334,20 @@ svg.leaflet-zoom-animated{will-change:transform}
       for(const cls of ['A','B','C','D','CCC']) for(const m of (gliders[mf][cls]||[])){ const k=norm(m); if(s.includes(k)){ const score=k.length+(mfHit?10:0); if(score>bl){best=cls;bl=score;} } } }
     return best;
   }
+  const CLASS_COL={A:'#3FA34D',B:'#3B82C4',C:'#D9822B',D:'#D14343',CCC:'#8B5CC7'};
   function gliderOptions(sel){
     let h='<option value="">Schirm wählen…</option>';
-    const mfs=Object.keys(gliders).filter(k=>!k.startsWith('_')).sort();
-    for(const mf of mfs) for(const c of ['A','B','C','D','CCC']){ const list=(gliders[mf][c]||[]); if(!list.length) continue;
-      h+=`<optgroup label="${esc(mf)} · EN-${c}">`+list.map(m=>{const full=mf+' '+m;return `<option value="${esc(full)}" ${full===sel?'selected':''}>${esc(m)}</option>`;}).join('')+'</optgroup>'; }
+    const mfs=Object.keys(gliders).filter(k=>!k.startsWith('_')).sort((a,b)=>a.localeCompare(b));
+    const NB='\u00a0';
+    for(const mf of mfs){
+      const cls=['A','B','C','D','CCC'].filter(c=>(gliders[mf][c]||[]).length); if(!cls.length) continue;
+      h+=`<optgroup label="${esc(mf)}">`;
+      for(const c of cls){
+        h+=`<option disabled style="color:${CLASS_COL[c]};font-weight:700">${NB.repeat(3)}EN-${c}</option>`;
+        h+=(gliders[mf][c]||[]).slice().sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})).map(m=>{const full=mf+' '+m;return `<option value="${esc(full)}" ${full===sel?'selected':''}>${NB.repeat(8)}${esc(m)}</option>`;}).join('');
+      }
+      h+='</optgroup>';
+    }
     return h;
   }
   const gliderOfPilot={};
@@ -335,11 +360,12 @@ svg.leaflet-zoom-animated{will-change:transform}
   const addDays=(ds,n)=>{const d=new Date(ds+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
   function compute(){
     const corrKm=state.corridor/1000;
-    const fl=state.flights.filter(f=>!(state.excludeHidden&&state.hidden.has(f.pilot))).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+    const invalid=state.flights.filter(f=>validate(f));
+    const fl=state.flights.filter(f=>!validate(f)&&!(state.excludeHidden&&state.hidden.has(f.pilot))).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
     const terr={}, events=[], snaps=[], byDay={};
     fl.forEach(f=>{(byDay[f.date]=byDay[f.date]||[]).push(f); if(f.glider) gliderOfPilot[f.pilot]=f.glider; if(f.enClass) classOfPilot[f.pilot]=f.enClass;});
     const days=Object.keys(byDay).sort();
-    if(!days.length){state.result={terr,events,snaps,fl:[]};return;}
+    if(!days.length){ invalid.forEach(f=>events.push({f,invalid:validate(f),shape:'ungültig',area:0,inc:0,overlapOwn:0,captured:0,len:0,excl:0,shared:0,base:0,bonus:0,bonusTxt:[],dayTotal:null,flightsToday:0})); state.result={terr,events,snaps,fl:[]};return;}
     const end=todayStr()>days[days.length-1]?todayStr():days[days.length-1];
     let d=new Date(days[0]+'T00:00:00Z'); const endD=new Date(end+'T00:00:00Z');
     const dayUnions=[]; const mineEver={}; const exclHist=[]; let last=null; let flightDays=0;
@@ -406,6 +432,7 @@ svg.leaflet-zoom-animated{will-change:transform}
       }
       d.setUTCDate(d.getUTCDate()+1);
     }
+    invalid.forEach(f=>events.push({f,invalid:validate(f),shape:'ungültig',area:0,inc:0,overlapOwn:0,captured:0,len:0,excl:0,shared:0,base:0,bonus:0,bonusTxt:[],dayTotal:null,flightsToday:0}));
     state.result={terr,events,snaps,fl};
   }
 
@@ -440,7 +467,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     const S=state.sort; const keyOf=e=>S.key==='time'?e.f.date+e.f.time:S.key==='pilot'?e.f.pilot.toLowerCase():S.key==='area'?e.area:S.key==='captured'?e.captured:S.key==='excl'?e.excl:S.key==='inc'?e.inc:S.key==='pts'?(e.base+e.bonus):e.len;
     const evs=r?r.events.filter(e=>!state.hidden.has(e.f.pilot)).sort((a,b)=>{const x=keyOf(a),y=keyOf(b);return (x<y?-1:x>y?1:0)*S.dir;}):[];
     document.querySelectorAll('.flights th[data-key]').forEach(th=>{th.textContent=th.dataset.label+(th.dataset.key===S.key?(S.dir>0?' ▲':' ▼'):'');});
-    $('#flightRows').innerHTML=evs.length?evs.map(e=>`<tr data-p="${esc(e.f.pilot)}"><td>${e.f.date}<br><span class="unit">${e.f.time.slice(0,2)}:${e.f.time.slice(2,4)} UTC</span></td><td><span class="pilot"><span class="sw" style="background:${colorOf(e.f.pilot)}"></span>${esc(e.f.pilot)}</span><span class="unit">EN-${classOf(e.f.pilot)||'?'} (×${classFactor(e.f.pilot)})</span>${e.f.glider?`<br><span class="unit">${esc(e.f.glider)}</span>`:''}</td><td><span class="tag">${e.shape}</span><br><span class="unit">${fmt(e.len,0)} km Track</span>${e.restDay?`<br><span class="unit" style="color:var(--ink-2)">Ruhetag: nur ${e.flightsToday} von mind. ${FLIGHTDAY_MIN} Flügen, keine Wertung</span>`:''}${e.restDay?'':''}${e.overlapOwn>0.005?`<br><span class="unit">deckt sich zu ${Math.round(e.overlapOwn*100)} % mit eigenem Vorflug</span>`:''}${e.restDay?'':`<br><span class="unit">+ allein ${fmt(e.excl,2)} km² × 1,2 = ${fmt(e.excl*EXCL,2)}</span><br><span class="unit">+ geteilt ${fmt(e.shared,2)} km² × 1 = ${fmt(e.shared,2)}</span><br><span class="unit" style="font-weight:600">= Grundpunkte ${fmt(e.base,2)}</span>${e.bonusTxt.length?e.bonusTxt.map(t=>`<br><span class="unit" style="color:var(--accent)">+ ${t}</span>`).join('')+`<br><span class="unit" style="color:var(--accent);font-weight:600">= Bonus ${fmt(e.bonus,2)}</span>`:''}<br><span class="unit" style="font-weight:600">Grundpunkte ${fmt(e.base,2)} + Bonus ${fmt(e.bonus,2)} = ${fmt(e.base+e.bonus,2)} Punkte für diesen Flug</span>`}${e.dayTotal!=null?(()=>{const cs=Math.max(0,e.carry-e.carryExcl), cl=e.carryLong||0, ce=Math.max(0,e.carryExcl-cl); const cp=ce*EXCL+cl*HOLD_F+cs; const flightsSum=e.dayTotal-cp; return `${e.carry>0.005?`<br><span class="unit">+ aus früheren Tagen gehalten: allein ${fmt(ce,2)} km² × 1,2${cl>0.005?' + seit 7+ Tagen '+fmt(cl,2)+' km² × 1,3':''} + geteilt ${fmt(cs,2)} km² × 1 = ${fmt(cp,2)}</span>`:''}<br><span class="unit" style="font-weight:600;color:var(--accent)">Tag gesamt ${e.flightsToday>1?fmt(flightsSum,2)+' (aus '+e.flightsToday+' Flügen)':fmt(flightsSum,2)}${e.carry>0.005?' + '+fmt(cp,2):''} = ${fmt(e.dayTotal,2)}</span>`;})():''}</td><td class="num">${fmt(e.area,2)}</td><td class="num">${fmt(e.inc,2)}</td><td class="num">${fmt(e.excl,2)}</td><td class="num">${e.captured>0.005?fmt(e.captured,2):'–'}</td><td class="num">${e.restDay?'<span class="unit">–</span>':`<strong>${fmt(e.base+e.bonus,2)}</strong>`}${e.dayTotal!=null?`<br><span class="unit" style="color:var(--accent);font-weight:600">Tag ${fmt(e.dayTotal,2)}</span>`:''}</td></tr>`).join(''):'<tr><td colspan="8" class="note">Noch keine Flüge geladen.</td></tr>';
+    $('#flightRows').innerHTML=evs.length?evs.map(e=>e.invalid?`<tr data-p="${esc(e.f.pilot)}"><td>${e.f.date}<br><span class="unit">${e.f.time.slice(0,2)}:${e.f.time.slice(2,4)} UTC</span></td><td><span class="pilot"><span class="sw" style="background:${colorOf(e.f.pilot)}"></span>${esc(e.f.pilot)}</span></td><td colspan="6"><span class="tag" style="color:#E24B4A;border-color:#E24B4A">ungültig</span><br><span class="unit" style="color:#E24B4A">${esc(e.invalid)}. Flug zählt nicht.</span></td></tr>`:`<tr data-p="${esc(e.f.pilot)}"><td>${e.f.date}<br><span class="unit">${e.f.time.slice(0,2)}:${e.f.time.slice(2,4)} UTC</span></td><td><span class="pilot"><span class="sw" style="background:${colorOf(e.f.pilot)}"></span>${esc(e.f.pilot)}</span><span class="unit">EN-${classOf(e.f.pilot)||'?'} (×${classFactor(e.f.pilot)})</span>${e.f.glider?`<br><span class="unit">${esc(e.f.glider)}</span>`:''}</td><td><span class="tag">${e.shape}</span><br><span class="unit">${fmt(e.len,0)} km Track</span>${e.restDay?`<br><span class="unit" style="color:var(--ink-2)">Ruhetag: nur ${e.flightsToday} von mind. ${FLIGHTDAY_MIN} Flügen, keine Wertung</span>`:''}${e.restDay?'':''}${e.overlapOwn>0.005?`<br><span class="unit">deckt sich zu ${Math.round(e.overlapOwn*100)} % mit eigenem Vorflug</span>`:''}${e.restDay?'':`<br><span class="unit">+ allein ${fmt(e.excl,2)} km² × 1,2 = ${fmt(e.excl*EXCL,2)}</span><br><span class="unit">+ geteilt ${fmt(e.shared,2)} km² × 1 = ${fmt(e.shared,2)}</span><br><span class="unit" style="font-weight:600">= Grundpunkte ${fmt(e.base,2)}</span>${e.bonusTxt.length?e.bonusTxt.map(t=>`<br><span class="unit" style="color:var(--accent)">+ ${t}</span>`).join('')+`<br><span class="unit" style="color:var(--accent);font-weight:600">= Bonus ${fmt(e.bonus,2)}</span>`:''}<br><span class="unit" style="font-weight:600">Grundpunkte ${fmt(e.base,2)} + Bonus ${fmt(e.bonus,2)} = ${fmt(e.base+e.bonus,2)} Punkte für diesen Flug</span>`}${e.dayTotal!=null?(()=>{const cs=Math.max(0,e.carry-e.carryExcl), cl=e.carryLong||0, ce=Math.max(0,e.carryExcl-cl); const cp=ce*EXCL+cl*HOLD_F+cs; const flightsSum=e.dayTotal-cp; return `${e.carry>0.005?`<br><span class="unit">+ aus früheren Tagen gehalten: allein ${fmt(ce,2)} km² × 1,2${cl>0.005?' + seit 7+ Tagen '+fmt(cl,2)+' km² × 1,3':''} + geteilt ${fmt(cs,2)} km² × 1 = ${fmt(cp,2)}</span>`:''}<br><span class="unit" style="font-weight:600;color:var(--accent)">Tag gesamt ${e.flightsToday>1?fmt(flightsSum,2)+' (aus '+e.flightsToday+' Flügen)':fmt(flightsSum,2)}${e.carry>0.005?' + '+fmt(cp,2):''} = ${fmt(e.dayTotal,2)}</span>`;})():''}</td><td class="num">${fmt(e.area,2)}</td><td class="num">${fmt(e.inc,2)}</td><td class="num">${fmt(e.excl,2)}</td><td class="num">${e.captured>0.005?fmt(e.captured,2):'–'}</td><td class="num">${e.restDay?'<span class="unit">–</span>':`<strong>${fmt(e.base+e.bonus,2)}</strong>`}${e.dayTotal!=null?`<br><span class="unit" style="color:var(--accent);font-weight:600">Tag ${fmt(e.dayTotal,2)}</span>`:''}</td></tr>`).join(''):'<tr><td colspan="8" class="note">Noch keine Flüge geladen.</td></tr>';
     renderMap();
   }
 
@@ -584,7 +611,7 @@ svg.leaflet-zoom-animated{will-change:transform}
   function setDb(txt){ $('#dbstatus').textContent='Datenbank: '+txt; }
   function renderPrep(){
     const box=$('#prep'); if(!cfg||!cfg.supabaseUrl){ box.hidden=true; return; }
-    const neu=state.flights.filter(f=>!f.inDb);
+    const neu=state.flights.filter(f=>!f.inDb&&!validate(f));
     if(!neu.length){ box.hidden=true; return; }
     const rows=[];
     for(const p of [...new Set(neu.map(f=>f.pilot))]){
@@ -592,7 +619,7 @@ svg.leaflet-zoom-animated{will-change:transform}
       const c=gliderClass(g);
       if(g&&c) continue;
       if(!g) rows.push(`<div class="row"><span class="pilot"><span class="sw" style="background:${colorOf(p)}"></span>${esc(p)}</span><select data-p="${esc(p)}" data-k="glider">${gliderOptions('')}</select><span class="unit">kein Schirm in der IGC</span></div>`);
-      else rows.push(`<div class="row"><span class="pilot"><span class="sw" style="background:${colorOf(p)}"></span>${esc(p)}</span><span class="unit">${esc(g)} (nicht in der Liste)</span><select data-p="${esc(p)}" data-k="cls"><option value="">Klasse?</option>${['A','B','C','D','CCC'].map(x=>`<option>${x}</option>`).join('')}</select></div>`);
+      else rows.push(`<div class="row"><span class="pilot"><span class="sw" style="background:${colorOf(p)}"></span>${esc(p)}</span><span class="unit">${esc(g)} (nicht in der Liste)</span><select data-p="${esc(p)}" data-k="cls"><option value="">Klasse?</option>${['A','B','C','D','CCC'].map(x=>`<option value="${x}" style="color:${CLASS_COL[x]};font-weight:700">EN-${x}</option>`).join('')}</select></div>`);
     }
     if(!rows.length){ box.hidden=true; return; }
     $('#prepRows').innerHTML=rows.join(''); box.hidden=false;
@@ -600,8 +627,9 @@ svg.leaflet-zoom-animated{will-change:transform}
   $('#dbSave').addEventListener('click',async()=>{
     const code=$('#clubCode').value.trim(); if(!code){ showErr('Club-Code eingeben.'); return; }
     try{ localStorage.setItem('xc-club-code',code); }catch(e){}
-    const neu=state.flights.filter(f=>!f.inDb);
-    if(!neu.length){ showErr('Alle geladenen Flüge sind schon in der Datenbank.'); return; }
+    const bad=state.flights.filter(f=>!f.inDb&&validate(f));
+    const neu=state.flights.filter(f=>!f.inDb&&!validate(f));
+    if(!neu.length){ showErr(bad.length?bad.length+' ungültige Flüge werden nicht gespeichert, sonst nichts Neues.':'Alle geladenen Flüge sind schon in der Datenbank.'); return; }
     const missing=[];
     for(const p of [...new Set(neu.map(f=>f.pilot))]){
       let g=(neu.find(f=>f.pilot===p&&f.glider)||{}).glider||'';
@@ -613,7 +641,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     }
     if(missing.length){ showErr('Schirm oder Klasse fehlt bei: '+missing.join(', ')); return; }
     $('#dbSave').disabled=true; showErr('');
-    try{ const r=await dbInsert(neu,code); showErr((r.ok?r.ok+' gespeichert. ':'')+(r.dup?r.dup+' waren schon drin. ':'')+(r.err.length?'Fehler: '+r.err.join(', '):'')); setDb('verbunden, '+state.flights.filter(f=>f.inDb).length+' Flüge'); renderPrep(); refresh(); }
+    try{ const r=await dbInsert(neu,code); showErr((r.ok?r.ok+' gespeichert. ':'')+(bad.length?bad.length+' ungültig, nicht gespeichert. ':'')+(r.dup?r.dup+' waren schon drin. ':'')+(r.err.length?'Fehler: '+r.err.join(', '):'')); setDb('verbunden, '+state.flights.filter(f=>f.inDb).length+' Flüge'); renderPrep(); refresh(); }
     catch(e){ showErr('Speichern fehlgeschlagen: '+e.message); }
     $('#dbSave').disabled=false;
   });

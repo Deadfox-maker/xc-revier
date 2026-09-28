@@ -215,13 +215,16 @@
    "Bantam"
   ],
   "B": [
+   "Doubleskin",
+   "Ion",
+   "Ion 4",
+   "Ion 5",
    "Ion 6",
    "Ion 7",
    "Mentor 6",
    "Mentor 7",
    "Mentor 7 Light",
-   "Phantom",
-   "Doubleskin"
+   "Phantom"
   ],
   "C": [
    "Sector",
@@ -336,9 +339,12 @@
    "Mint 2"
   ],
   "D": [
+   "Poison",
+   "Poison 2",
+   "Poison 3",
    "Poison X-Alps",
-   "Poison XAlps",
    "Poison X-Alps 3",
+   "Poison XAlps",
    "X-Alps 5"
   ],
   "CCC": []
