@@ -281,7 +281,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v64 (28.09. 17:39)</span>
+  <span class="lbl" id="version">v65 (28.09. 17:42)</span>
   <button type="button" class="mgear" id="mGear" aria-label="Hochladen und Einstellungen">⚙</button>
 </header>
 <nav class="mnav" id="mNav"><button type="button" data-v="map" aria-current="true"><b>🗺</b>Karte</button><button type="button" data-v="score"><b>🏆</b>Rangliste</button><button type="button" data-v="fl"><b>✈</b>Flüge</button><button type="button" data-v="rules"><b>📖</b>Regeln</button></nav>
@@ -549,24 +549,23 @@ svg.leaflet-zoom-animated{will-change:transform}
   async function fetchPlaces(flights,tok){
     const need=flights.filter(f=>f.coords&&f.coords.length&&!placeOf(f));
     if(!need.length) return;
-    // 1. Startplätze aus OpenStreetMap (Overpass), eine Abfrage pro 0,5°-Kachel
-    const tiles={}; need.forEach(f=>{ const [lon,lat]=f.coords[0]; const k=(Math.floor(lat*2)/2)+','+(Math.floor(lon*2)/2); (tiles[k]=tiles[k]||[]).push(f); });
-    const sites=[]; let ti=0; const tk=Object.keys(tiles);
-    for(const k of tk){
-      ti++; if(busyOn) busy('Suche Startplätze ('+ti+' von '+tk.length+' Gebieten)',0.05+0.05*ti/tk.length);
-      const [la,lo]=k.split(',').map(Number); const bb=`${(la-0.05).toFixed(2)},${(lo-0.05).toFixed(2)},${(la+0.55).toFixed(2)},${(lo+0.55).toFixed(2)}`;
-      const q=`[out:json][timeout:25];(nwr["free_flying:site"](${bb});nwr["free_flying:takeoff"](${bb});nwr["sport"="free_flying"](${bb});nwr["aeroway"="launchsite"](${bb}););out center tags;`;
-      for(const host of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
-        try{ const r=await fetch(host+'?data='+encodeURIComponent(q)); if(!r.ok) continue; const j=await r.json();
-          (j.elements||[]).forEach(el=>{ const t=el.tags||{}; const name=t.name||t['name:de']||''; if(!name) return; const lat=el.lat??(el.center&&el.center.lat), lon=el.lon??(el.center&&el.center.lon); if(lat==null) return;
-            const kind=String(t['free_flying:site']||''); const land=/landing/.test(kind)&&!/takeoff/.test(kind);
-            sites.push({n:name,c:[lon,lat],land}); });
-          break; }catch(e){}
-      }
-      if(tok!==calcTok) return;
+    // 1. Startplätze aus OpenStreetMap (Overpass): eine Abfrage für alle Startpunkte, mit Zeitlimit
+    const uniq={}; need.forEach(f=>{ const [lon,lat]=f.coords[0]; uniq[lat.toFixed(2)+','+lon.toFixed(2)]=[lat,lon]; });
+    const pts=Object.values(uniq); const sites=[];
+    if(busyOn) busy('Suche Startplätze für '+pts.length+' Startpunkte …',null);
+    const clauses=pts.map(([la,lo])=>`nwr(around:2000,${la.toFixed(4)},${lo.toFixed(4)})["free_flying:site"];nwr(around:2000,${la.toFixed(4)},${lo.toFixed(4)})["sport"="free_flying"];`).join('');
+    const q=`[out:json][timeout:20];(${clauses});out center tags;`;
+    for(const host of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
+      const ac=new AbortController(); const to=setTimeout(()=>ac.abort(),25000);
+      try{ const r=await fetch(host,{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'},signal:ac.signal}); clearTimeout(to); if(!r.ok) continue; const j=await r.json();
+        (j.elements||[]).forEach(el=>{ const t=el.tags||{}; const name=t.name||t['name:de']||''; if(!name) return; const lat=el.lat??(el.center&&el.center.lat), lon=el.lon??(el.center&&el.center.lon); if(lat==null) return;
+          const kind=String(t['free_flying:site']||''); const land=/landing/.test(kind)&&!/takeoff/.test(kind);
+          sites.push({n:name,c:[lon,lat],land}); });
+        break; }catch(e){ clearTimeout(to); }
     }
+    if(tok!==calcTok) return;
     // 2. nächsten Startplatz (bis 2 km) zuordnen, sonst Ortsname über Nominatim
-    let i=0;
+    let i=0, nomi=0;
     for(const f of need){
       i++; const pk=placeKey(f); if(placeOf(f)) continue;
       const st=f.coords[0]; let best=null, bd=2.0;
@@ -574,7 +573,7 @@ svg.leaflet-zoom-animated{will-change:transform}
       if(best){ places[pk]={v:2,n:best.n,site:true}; continue; }
       const near=Object.keys(places).find(k=>places[k]&&places[k].v===2&&!places[k].site&&kmBetween(st,k.split(',').reverse().map(Number))<1.5);
       if(near){ places[pk]=places[near]; continue; }
-      if(busyOn) busy('Suche Ortsnamen ('+i+' von '+need.length+')',0.1+0.05*i/need.length);
+      if(++nomi>40) continue; if(busyOn) busy('Suche Ortsnamen ('+i+' von '+need.length+')',0.1+0.05*i/need.length);
       try{ const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${st[1].toFixed(5)}&lon=${st[0].toFixed(5)}&zoom=14&accept-language=de`); if(r.ok){ const j=await r.json(); const a=j.address||{}; const name=a.village||a.hamlet||a.town||a.suburb||a.municipality||a.city||a.locality||j.name||''; places[pk]={v:2,n:name,r:a.county||a.state||'',site:false}; } }catch(e){}
       await new Promise(r=>setTimeout(r,1100)); if(tok!==calcTok) return;
     }
