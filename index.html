@@ -148,7 +148,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v38 (28.09. 07:30)</span>
+  <span class="lbl" id="version">v39 (28.09. 07:34)</span>
 </header>
 
 <div class="wrap">
@@ -175,6 +175,7 @@ svg.leaflet-zoom-animated{will-change:transform}
         <span id="dbtools" hidden>
           <input type="text" id="clubCode" placeholder="Club-Code" style="width:120px">
           <button type="button" class="btn primary" id="dbSave">Neue Flüge in Datenbank speichern</button>
+          <button type="button" class="btn" id="recalcBtn" title="Alles neu rechnen und das Ergebnis für alle Besucher speichern">Neu berechnen</button>
         </span>
       </div>
       <div class="prep" id="prep" hidden>
@@ -656,7 +657,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     }
     if(missing.length){ showErr('Schirm oder Klasse fehlt bei: '+missing.join(', ')); return; }
     $('#dbSave').disabled=true; showErr('');
-    try{ const r=await dbInsert(neu,code); showErr((r.ok?r.ok+' gespeichert. ':'')+(bad.length?bad.length+' ungültig, nicht gespeichert. ':'')+(r.dup?r.dup+' waren schon drin. ':'')+(r.err.length?'Fehler: '+r.err.join(', '):'')); setDb('verbunden, '+state.flights.filter(f=>f.inDb).length+' Flüge'); renderPrep(); refresh(); }
+    try{ const r=await dbInsert(neu,code); showErr((r.ok?r.ok+' gespeichert. ':'')+(bad.length?bad.length+' ungültig, nicht gespeichert. ':'')+(r.dup?r.dup+' waren schon drin. ':'')+(r.err.length?'Fehler: '+r.err.join(', '):'')); setDb('verbunden, '+state.flights.filter(f=>f.inDb).length+' Flüge'); renderPrep(); if(r.ok){ const msg=$('#err').textContent; await recalcAndSave(code); showErr(msg+' '+$('#err').textContent); } else refresh(); }
     catch(e){ showErr('Speichern fehlgeschlagen: '+e.message); }
     $('#dbSave').disabled=false;
   });
@@ -667,6 +668,55 @@ svg.leaflet-zoom-animated{will-change:transform}
     for(const chunk of splitIGC(txt)){ try{ state.flights.push(parseIGC(chunk,'')); n++; }catch(e){} }
     return n;
   }
+
+  // --- Ergebnis-Cache: einmal rechnen, für alle Besucher speichern
+  const RULES_VERSION='r1';
+  const fkey=f=>f.pilot+'|'+f.date+'|'+f.time;
+  function inputSig(){
+    const keys=state.flights.map(f=>fkey(f)+'|'+(f.enClass||'')).sort();
+    let h=0; const s=RULES_VERSION+'|'+state.corridor+'|'+keys.join(';');
+    for(let i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))|0; }
+    return RULES_VERSION+':'+keys.length+':'+(h>>>0).toString(36);
+  }
+  function packResult(){
+    const r=state.result; if(!r) return null;
+    const ev=r.events.map(e=>{ const o={...e}; o.k=fkey(e.f); delete o.f; delete o.geom; delete o.incGeom; return o; });
+    return {sig:inputSig(),terr:r.terr,snaps:r.snaps,events:ev,fl:r.fl.map(fkey),gliderOfPilot,classOfPilot};
+  }
+  function extendSnaps(snaps){
+    if(!snaps.length) return snaps;
+    const lastDate=snaps[snaps.length-1].date, t=todayStr(); if(lastDate>=t) return snaps;
+    const lf=[...snaps].reverse().find(s=>s.flightDay)||snaps[snaps.length-1];
+    let d=new Date(lastDate+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+1);
+    while(d.toISOString().slice(0,10)<=t){ snaps.push({date:d.toISOString().slice(0,10),flightDay:false,flights:0,areas:{...lf.areas},score:{},base:{},excl:{...lf.excl},longHeld:{},bonus:{}}); d.setUTCDate(d.getUTCDate()+1); }
+    return snaps;
+  }
+  function applyResult(data){
+    const byKey={}; state.flights.forEach(f=>byKey[fkey(f)]=f);
+    Object.assign(gliderOfPilot,data.gliderOfPilot||{}); Object.assign(classOfPilot,data.classOfPilot||{});
+    const events=data.events.map(o=>{ const e={...o,f:byKey[o.k]}; delete e.k; return e; }).filter(e=>e.f);
+    state.result={terr:data.terr,snaps:extendSnaps(data.snaps),events,fl:data.fl.map(k=>byKey[k]).filter(Boolean)};
+  }
+  async function loadResult(){
+    const r=await fetch(cfg.supabaseUrl+'/rest/v1/results?select=data&order=id.desc&limit=1',{headers:dbHeaders()});
+    if(!r.ok) return null; const j=await r.json(); return j.length?j[0].data:null;
+  }
+  async function saveResult(code){
+    const data=packResult(); if(!data) return false;
+    const body=JSON.stringify({code,payload:data,n:state.flights.length},(k,v)=>typeof v==='number'&&!Number.isInteger(v)?Math.round(v*1e6)/1e6:v);
+    const r=await fetch(cfg.supabaseUrl+'/rest/v1/rpc/save_result',{method:'POST',headers:dbHeaders(),body});
+    return r.ok;
+  }
+  async function recalcAndSave(code){
+    state.excludeHidden=false; $('#exclHidden').checked=false;
+    await refresh();
+    if(code){ const ok=await saveResult(code); showErr(ok?'Ergebnis gespeichert, Besucher sehen es ab jetzt sofort.':'Ergebnis konnte nicht gespeichert werden (Club-Code prüfen, SQL-Update ausgeführt?).'); }
+  }
+  $('#recalcBtn').addEventListener('click',async()=>{
+    const code=$('#clubCode').value.trim(); if(!code){ showErr('Für "Neu berechnen" den Club-Code eingeben.'); return; }
+    try{ localStorage.setItem('xc-club-code',code); }catch(e){}
+    $('#recalcBtn').disabled=true; await recalcAndSave(code); $('#recalcBtn').disabled=false;
+  });
 
   async function start(){
     if(!window.L||!window.turf){ showErr('Kartenbibliothek konnte nicht geladen werden. Internetverbindung prüfen.'); return; }
@@ -683,7 +733,11 @@ svg.leaflet-zoom-animated{will-change:transform}
       let n=0; try{ n=await loadRepoFile(); }catch(e){}
       if(n){ $('#hint').textContent='Geladen aus flights.txt im Repo: '+n+' Flüge.'; }
     }
-    if(state.flights.length){ $('#hint').hidden=false; if(state.flights.some(f=>f.inDb)) $('#hint').textContent='Geladen aus der Datenbank: '+state.flights.length+' Flüge. Weitere IGC-Dateien laden und mit Club-Code speichern.'; refresh(); }
+    if(state.flights.length){ $('#hint').hidden=false; if(state.flights.some(f=>f.inDb)) $('#hint').textContent='Geladen aus der Datenbank: '+state.flights.length+' Flüge. Weitere IGC-Dateien laden und mit Club-Code speichern.';
+      let used=false;
+      if(cfg&&cfg.supabaseUrl&&state.flights.some(f=>f.inDb)){ try{ const data=await loadResult(); if(data&&data.sig===inputSig()){ applyResult(data); render(); used=true; } }catch(e){} }
+      if(!used){ if(cfg&&cfg.supabaseUrl) $('#hint').textContent+=' Gespeichertes Ergebnis veraltet, wird neu gerechnet …'; await refresh(); }
+    }
     else loadSample();
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start); else start();
