@@ -179,7 +179,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v46 (28.09. 09:22)</span>
+  <span class="lbl" id="version">v47 (28.09. 09:24)</span>
 </header>
 
 <div class="wrap">
@@ -276,7 +276,7 @@ svg.leaflet-zoom-animated{will-change:transform}
         <dt>Erkundung</dt><dd>vom Piloten selbst in der Saison nie geflogen: +30 % × Klassenfaktor</dd>
         <dt>Übernahme</dt><dd>≥ 30 % eines fremden Reviers genommen: +20 % der insgesamt genommenen Fläche; nicht bei Upload später als 3 Tage nach dem Flug (ab 1.10.2026)</dd>
         <dt>Wiederholung</dt><dd>weiterer Flug am selben Tag mit ≥ 70 % Deckung: 1. Wiederholung −10 %, jede weitere 5 % mehr, vom Tagesergebnis</dd>
-        <dt>Pilot fliegt nicht</dt><dd>nach 5 Flugtagen ohne eigenen Flug sinken alle Haltepunkte: 6. Flugtag −10 %, 7. −20 %, 8. −40 %, 9. −75 %, ab 10. −100 %; weg, sobald er wieder fliegt</dd>
+        <dt>Pilot fliegt nicht</dt><dd>nach 5 Flugtagen ohne eigenen Flug sinkt der Wert seiner bestehenden Flächen: 6. Flugtag −10 %, 7. −20 %, 8. −40 %, 9. −75 %, ab 10. −100 %. Der verlorene Wert bleibt verloren, neu Geflogenes zählt voll</dd>
         <dt>Flächenalter</dt><dd>eigene Fläche, die 5 Flugtage nicht mehr beflogen wurde, zählt 90 / 80 / 60 / 25 / 0 %; wieder drüberfliegen macht sie frisch. Beides wird multipliziert, Fläche bleibt immer auf der Karte</dd>
       </dl>
     </section>
@@ -460,9 +460,9 @@ svg.leaflet-zoom-animated{will-change:transform}
         for(const q of Object.keys(terr)) terr[q]=safeDiff(terr[q],dayUnion);
         for(const p in mineOf) terr[p]=terr[p]?(unionAll([terr[p],mineOf[p]])||mineOf[p]):mineOf[p];
         for(const q in terr) terr[q]=simp(terr[q]);
-        for(const q in pieces){ pieces[q]=pieces[q].map(pc=>({idx:pc.idx,geom:simp(safeDiff(pc.geom,dayUnion))})).filter(pc=>pc.geom&&areaKm2(pc.geom)>0.0005);
-          const dead=pieces[q].filter(pc=>flightDays-pc.idx>=AGE_AFTER+AGE_F.length); if(dead.length>1){ const g=unionAll(dead.map(d=>d.geom)); pieces[q]=pieces[q].filter(pc=>!dead.includes(pc)).concat([{idx:Math.max(...dead.map(d=>d.idx)),geom:g}]); } }
-        for(const p in mineOf) (pieces[p]=pieces[p]||[]).push({idx:flightDays,geom:mineOf[p]});
+        for(const q in pieces){ pieces[q]=pieces[q].map(pc=>({idx:pc.idx,pm:pc.pm,geom:simp(safeDiff(pc.geom,dayUnion))})).filter(pc=>pc.geom&&areaKm2(pc.geom)>0.0005);
+          const dead=pieces[q].filter(pc=>flightDays-pc.idx>=AGE_AFTER+AGE_F.length); if(dead.length>1){ const g=unionAll(dead.map(d=>d.geom)); pieces[q]=pieces[q].filter(pc=>!dead.includes(pc)).concat([{idx:Math.max(...dead.map(d=>d.idx)),pm:Math.min(...dead.map(d=>d.pm??1)),geom:g}]); } }
+        for(const p in mineOf) (pieces[p]=pieces[p]||[]).push({idx:flightDays,pm:1,geom:mineOf[p]});
         dayUnions.push({date:ds,geom:dayUnion}); while(dayUnions.length>NEULAND_DAYS+1) dayUnions.shift();
         for(const p in mineOf) mineEver[p]=unionAll([mineEver[p],mineOf[p]]);
         const areas={}, base={}, exclA={}, longA={}, exclG={}, decayA={}, inactA={}, penA={}, ageWA={};
@@ -479,9 +479,9 @@ svg.leaflet-zoom-animated{will-change:transform}
           const inactive=lastFlew[p]==null?0:flightDays-lastFlew[p];
           const decay=inactive>DECAY_AFTER?1-DECAY_STEPS[Math.min(inactive-DECAY_AFTER,DECAY_STEPS.length)-1]:1; decayA[p]=decay; inactA[p]=inactive;
           let pts=0, raw=0;
-          for(const pc of (pieces[p]||[])){ const fa=ageF(flightDays-pc.idx); const t=areaKm2(pc.geom); const ePc=safeInter(pc.geom,eg); const ex=areaKm2(ePc); const lo=oldRef[p]&&ex>0.0005?areaKm2(safeInter(ePc,oldRef[p])):0; const v=(ex-lo)*EXCL+lo*HOLD_F+(t-ex); raw+=v; pts+=v*fa; }
+          for(const pc of (pieces[p]||[])){ const fa=ageF(flightDays-pc.idx); const t=areaKm2(pc.geom); const ePc=safeInter(pc.geom,eg); const ex=areaKm2(ePc); const lo=oldRef[p]&&ex>0.0005?areaKm2(safeInter(ePc,oldRef[p])):0; pc.pm=Math.min(pc.pm??1,decay); const v=(ex-lo)*EXCL+lo*HOLD_F+(t-ex); raw+=v; pts+=v*fa*pc.pm; }
           ageWA[p]=raw>0.0005?pts/raw:1;
-          areas[p]=total; exclA[p]=excl; longA[p]=lg; base[p]=pts*decay;
+          areas[p]=total; exclA[p]=excl; longA[p]=lg; base[p]=pts;
           const pp=Math.min(1,loopPct[p]||0); penA[p]=pp*(base[p]+(bonus[p]||0));
           const mine=dayEvents.filter(e=>e.f.pilot===p);
           mine.forEach(e=>{ e.excl=areaKm2(safeDiff(e.incGeom,others)); e.shared=Math.max(0,e.inc-e.excl); e.base=e.excl*EXCL+e.shared; delete e.geom; delete e.incGeom; });
@@ -557,7 +557,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     });
     const T=k=>rows.reduce((a,x)=>a+x[k],0); const split=rows.every(x=>x.split); const hasPen=rows.some(x=>x.pen>0.005), hasDec=rows.some(x=>x.decay<1);
     ptip=document.createElement('div'); ptip.className='ptip';
-    ptip.innerHTML=`<h3><span class="sw" style="background:${colorOf(p)}"></span>${esc(p)}</h3>`+(rows.length?`<table><thead><tr><th>Flugtag</th><th class="num">Flüge</th><th class="num">Grund</th>${split?'<th class="num">Neuland</th><th class="num">Erkundung</th><th class="num">Übernahme</th>':'<th class="num">Bonus</th>'}${hasPen?'<th class="num">Abzug</th>':''}<th class="num">Summe</th></tr></thead><tbody>`+rows.map(x=>`<tr><td>${fmtD(x.d)}</td><td class="num">${x.flights||'–'}</td><td class="num">${fmt(x.base,2)}${x.decay<1?`<br><span class="unit">Pilot ×${fmt(x.decay,2)}</span>`:''}${x.agew<0.999?`<br><span class="unit">Flächenalter ×${fmt(x.agew,2)}</span>`:''}</td>${split?`<td class="num">${fmt(x.nb,2)}</td><td class="num">${fmt(x.eb,2)}</td><td class="num">${fmt(x.tb,2)}</td>`:`<td class="num">${fmt(x.bonus,2)}</td>`}${hasPen?`<td class="num">${x.pen>0.005?'−'+fmt(x.pen,2):''}</td>`:''}<td class="num">${fmt(x.sum,2)}</td></tr>`).join('')+`</tbody><tfoot><tr><td>Gesamt</td><td class="num">${T('flights')}</td><td class="num">${fmt(T('base'),2)}</td>${split?`<td class="num">${fmt(T('nb'),2)}</td><td class="num">${fmt(T('eb'),2)}</td><td class="num">${fmt(T('tb'),2)}</td>`:`<td class="num">${fmt(T('bonus'),2)}</td>`}${hasPen?`<td class="num">−${fmt(T('pen'),2)}</td>`:''}<td class="num">${fmt(T('sum'),2)}</td></tr></tfoot></table><div class="unit" style="margin-top:6px">Grund = gehaltene Fläche an dem Flugtag (allein × 1,2, geteilt × 1), auch ohne eigenen Flug. Pilot × = nicht geflogen, Flächenalter × = eigene Fläche länger nicht beflogen.${split?'':' Aufteilung der Boni nach "Neu berechnen" sichtbar.'}</div>`:'<div class="unit">Keine Punkte im gewählten Zeitraum.</div>');
+    ptip.innerHTML=`<h3><span class="sw" style="background:${colorOf(p)}"></span>${esc(p)}</h3>`+(rows.length?`<table><thead><tr><th>Flugtag</th><th class="num">Flüge</th><th class="num">Grund</th>${split?'<th class="num">Neuland</th><th class="num">Erkundung</th><th class="num">Übernahme</th>':'<th class="num">Bonus</th>'}${hasPen?'<th class="num">Abzug</th>':''}<th class="num">Summe</th></tr></thead><tbody>`+rows.map(x=>`<tr><td>${fmtD(x.d)}</td><td class="num">${x.flights||'–'}</td><td class="num">${fmt(x.base,2)}${x.decay<1?`<br><span class="unit">Pause aktuell ×${fmt(x.decay,2)}</span>`:''}${x.agew<0.999?`<br><span class="unit">Flächen gewichtet ×${fmt(x.agew,2)}</span>`:''}</td>${split?`<td class="num">${fmt(x.nb,2)}</td><td class="num">${fmt(x.eb,2)}</td><td class="num">${fmt(x.tb,2)}</td>`:`<td class="num">${fmt(x.bonus,2)}</td>`}${hasPen?`<td class="num">${x.pen>0.005?'−'+fmt(x.pen,2):''}</td>`:''}<td class="num">${fmt(x.sum,2)}</td></tr>`).join('')+`</tbody><tfoot><tr><td>Gesamt</td><td class="num">${T('flights')}</td><td class="num">${fmt(T('base'),2)}</td>${split?`<td class="num">${fmt(T('nb'),2)}</td><td class="num">${fmt(T('eb'),2)}</td><td class="num">${fmt(T('tb'),2)}</td>`:`<td class="num">${fmt(T('bonus'),2)}</td>`}${hasPen?`<td class="num">−${fmt(T('pen'),2)}</td>`:''}<td class="num">${fmt(T('sum'),2)}</td></tr></tfoot></table><div class="unit" style="margin-top:6px">Grund = gehaltene Fläche an dem Flugtag (allein × 1,2, geteilt × 1), auch ohne eigenen Flug. Flächen gewichtet × = Wert der gehaltenen Flächen nach Pause und Flächenalter; durch Pause verlorener Wert bleibt verloren, neu Geflogenes zählt voll.${split?'':' Aufteilung der Boni nach "Neu berechnen" sichtbar.'}</div>`:'<div class="unit">Keine Punkte im gewählten Zeitraum.</div>');
     document.body.appendChild(ptip);
     const rc=tr.getBoundingClientRect(), w=ptip.offsetWidth;
     let left=rc.left+scrollX-w-12; if(left<8) left=Math.min(rc.right+scrollX+12,innerWidth+scrollX-w-8);
@@ -571,7 +571,7 @@ svg.leaflet-zoom-animated{will-change:transform}
       const B=state.bsort; const ps=[...new Set(r.fl.map(f=>f.pilot))].filter(p=>!state.hidden.has(p)).map(p=>{const t=last.areas[p]||0,x=last.excl[p]||0;return {p,t,x,g:t-x,l:last.longHeld[p]||0,s:last.score[p]||0,b:last.bonus[p]||0,dc:(last.decay&&last.decay[p]!=null)?last.decay[p]:1,ia:(last.inactive&&last.inactive[p])||0};})
         .sort((a,b)=>{const u=B.key==='p'?a.p.toLowerCase():a[B.key], v=B.key==='p'?b.p.toLowerCase():b[B.key]; return (u<v?-1:u>v?1:0)*B.dir;});
       document.querySelectorAll('#bilanzTable th[data-bk]').forEach(th=>{th.textContent=th.dataset.label+(th.dataset.bk===B.key?(B.dir>0?' ▲':' ▼'):'');});
-      $('#bilanzRows').innerHTML=ps.map(x=>`<tr data-p="${esc(x.p)}"><td><span class="pilot"><span class="sw" style="background:${colorOf(x.p)}"></span>${esc(x.p)}</span></td><td class="num">${fmt(x.t,2)}</td><td class="num">${fmt(x.x,2)}${x.l>0.005?`<br><span class="unit">7+ Flugtage ${fmt(x.l,2)}</span>`:''}</td><td class="num">${fmt(x.g,2)}</td><td class="num">${fmt(x.s,2)}${x.b>0.005?`<br><span class="unit">inkl. Bonus ${fmt(x.b,2)}</span>`:''}${x.dc<1?`<br><span class="unit" style="color:#E24B4A">Pilot ×${fmt(x.dc,2)} (${x.ia} Flugtage ohne Flug)</span>`:''}</td></tr>`).join('');
+      $('#bilanzRows').innerHTML=ps.map(x=>`<tr data-p="${esc(x.p)}"><td><span class="pilot"><span class="sw" style="background:${colorOf(x.p)}"></span>${esc(x.p)}</span></td><td class="num">${fmt(x.t,2)}</td><td class="num">${fmt(x.x,2)}${x.l>0.005?`<br><span class="unit">7+ Flugtage ${fmt(x.l,2)}</span>`:''}</td><td class="num">${fmt(x.g,2)}</td><td class="num">${fmt(x.s,2)}${x.b>0.005?`<br><span class="unit">inkl. Bonus ${fmt(x.b,2)}</span>`:''}${x.dc<1?`<br><span class="unit" style="color:#E24B4A">Pause ×${fmt(x.dc,2)} (${x.ia} Flugtage ohne Flug)</span>`:''}</td></tr>`).join('');
       $('#scoreNote').textContent='Stand Flugtag '+fmtD(last.date)+(last.date!==selDate()?' (letzter Flugtag bis Stichtag)':'')+'. Punkte = Allein × 1,2 (ab 7 Flugtagen × 1,3) + Geteilt × 1 + Boni. Spaltenköpfe anklicken zum Sortieren.'; }
     const rows=scores(); const held=state.tab==='held';
     $('#scoreHead').textContent=held?'km² jetzt':'Punkte';
@@ -790,7 +790,7 @@ svg.leaflet-zoom-animated{will-change:transform}
   }
 
   // --- Ergebnis-Cache: einmal rechnen, für alle Besucher speichern
-  const RULES_VERSION='r5';
+  const RULES_VERSION='r6';
   const fkey=f=>f.pilot+'|'+f.date+'|'+f.time;
   function inputSig(){
     const keys=state.flights.map(f=>fkey(f)+'|'+(f.enClass||'')).sort();
