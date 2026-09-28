@@ -62,7 +62,12 @@ input[type=file]::file-selector-button{font-family:var(--font-body);font-size:15
 .mapbox{padding:10px}
 .maphead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
 #map{width:100%;height:62vw;max-height:540px;min-height:300px;background:var(--map);border:1px solid var(--line);border-radius:4px}
-.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:13px;align-items:center}
+.legend{columns:4 170px;column-gap:16px;margin-top:6px;font-size:13px}
+.plist{margin-top:8px;border:1px solid var(--line);border-radius:4px;padding:6px 10px}
+.plist summary{cursor:pointer;font-weight:600;font-size:14px}
+.plisttools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 4px}
+.plisttools input{padding:5px 8px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;width:180px}
+.plisttools .btn{padding:4px 10px;font-size:13px}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .sw{width:14px;height:14px;border-radius:3px;display:inline-block}
 .tabs{display:flex;border-bottom:1px solid var(--line)}
@@ -81,8 +86,10 @@ tr:last-child td{border-bottom:0}
 .flights td{font-size:14px}
 .flights th[data-key]{cursor:pointer;user-select:none}
 .flights th[data-key]:hover{color:var(--ink)}
-.legend button{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:4px;padding:2px 8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
-.legend button.off{opacity:.4;text-decoration:line-through}
+.legend button{font:inherit;font-size:13px;border:0;background:none;color:var(--ink);padding:3px 2px;cursor:pointer;display:flex;align-items:center;gap:6px;width:100%;text-align:left;break-inside:avoid}
+.legend button::before{content:'\2713';display:inline-block;width:14px;color:var(--accent);font-weight:700}
+.legend button.off::before{content:'';}
+.legend button.off{opacity:.45}
 .legend .all{color:var(--ink-2);text-decoration:none;border-style:dashed}
 .tag{font-size:11px;padding:1px 6px;border:1px solid var(--line);border-radius:3px;color:var(--ink-2);white-space:nowrap}
 .err{color:#C0392B;font-size:13px;padding:0 14px 10px}
@@ -103,7 +110,8 @@ tr[data-p]{cursor:default}
 .leaflet-interactive.dim{fill-opacity:.12!important;opacity:.5}
 .leaflet-interactive.hot{fill-opacity:.6!important}
 .maptip{font-size:13px;color:var(--ink-2);margin-top:6px}
-.hovername{font-family:var(--font-display);font-size:22px;font-weight:600;padding:4px 0 8px;display:flex;align-items:center;gap:10px}
+.mapwrap{position:relative}
+.hovername{position:absolute;left:56px;top:10px;z-index:1000;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:4px 10px;font-family:var(--font-display);font-size:18px;font-weight:600;display:flex;align-items:center;gap:8px;box-shadow:0 1px 4px rgba(0,0,0,.3)}
 .hovername .sw{width:18px;height:18px}
 .hovername small{font-family:var(--font-body);font-size:13px;color:var(--ink-2);font-weight:400}
 
@@ -133,6 +141,8 @@ tr[data-p]{cursor:default}
 .leaflet-zoom-anim .leaflet-tile,.leaflet-pan-anim .leaflet-tile{transition:none}
 .leaflet-zoom-animated{transform-origin:0 0}
 svg.leaflet-zoom-animated{will-change:transform}
+.leaflet-pane>svg path{pointer-events:none}
+.leaflet-pane>svg path.leaflet-interactive{pointer-events:visiblePainted;pointer-events:auto}
 .leaflet-interactive{cursor:pointer}.leaflet-grab{cursor:grab}.leaflet-dragging .leaflet-grab{cursor:grabbing}
 .leaflet-bar{box-shadow:0 1px 4px rgba(0,0,0,.3);border-radius:4px;overflow:hidden}
 .leaflet-bar a{background:var(--panel);color:var(--ink);border-bottom:1px solid var(--line);width:30px;height:30px;line-height:30px;display:block;text-align:center;text-decoration:none;font:bold 18px var(--font-mono)}
@@ -148,7 +158,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v39 (28.09. 07:34)</span>
+  <span class="lbl" id="version">v40 (28.09. 08:35)</span>
 </header>
 
 <div class="wrap">
@@ -192,9 +202,11 @@ svg.leaflet-zoom-animated{will-change:transform}
         <label class="lbl" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="exclHidden"> Ausgeblendete nicht werten</label>
         <span class="lbl" id="areaLbl"></span>
       </div>
-      <div id="hoverName" class="hovername" hidden></div>
-      <div id="map" role="img" aria-label="Karte der gehaltenen Flächen"></div>
-      <div class="legend" id="legend"></div>
+      <div class="mapwrap"><div id="map" role="img" aria-label="Karte der gehaltenen Flächen"></div><div id="hoverName" class="hovername" hidden></div></div>
+      <details class="plist" id="plist"><summary id="plistSum">Piloten</summary>
+        <div class="plisttools"><input type="text" id="pSearch" placeholder="Name suchen"><button type="button" class="btn" id="pAll">alle</button><button type="button" class="btn" id="pNone">keine</button><span class="lbl"><span class="sw" style="background:none;border-top:2px dashed var(--ink-2);height:0;border-radius:0;display:inline-block;width:14px;vertical-align:middle"></span> Track</span></div>
+        <div class="legend" id="legend"></div>
+      </details>
       <div class="maptip" id="maptip" hidden>Die Hintergrundkarte wird in dieser Ansicht blockiert. In der Browser-Datei (xc-revier.html) erscheint sie.</div>
     </section>
 
@@ -475,7 +487,7 @@ svg.leaflet-zoom-animated{will-change:transform}
       $('#scoreNote').textContent='Stand letzter Flugtag ('+last.date.split('-').reverse().join('.')+'). Punkte = Allein × 1,2 (ab 7 Flugtagen × 1,3) + Geteilt × 1 + Boni. Spaltenköpfe anklicken zum Sortieren.'; }
     const rows=scores(); const held=state.tab==='held';
     $('#scoreHead').textContent=held?'km² jetzt':'Punkte';
-    $('#scoreRows').innerHTML=rows.length?rows.map((x,i)=>`<tr data-p="${esc(x.p)}"><td class="rank">${i<3?`<span class="medal m${i+1}" title="${['Gold','Silber','Bronze'][i]}">${i+1}</span>`:i+1}</td><td><span class="pilot"><span class="sw" style="background:${colorOf(x.p)}"></span>${esc(x.p)}</span></td><td class="num">${fmt(x.v,held?2:1)}${held?`<br><span class="unit">allein ${fmt(x.x,2)}</span>`:''}</td></tr>`).join(''):'<tr><td colspan="3" class="note">Noch keine Flüge.</td></tr>';
+    $('#scoreRows').innerHTML=rows.length?rows.map((x,i)=>`<tr data-p="${esc(x.p)}"><td class="rank">${i<3&&x.v>0.005?`<span class="medal m${i+1}" title="${['Gold','Silber','Bronze'][i]}">${i+1}</span>`:i+1}</td><td><span class="pilot"><span class="sw" style="background:${colorOf(x.p)}"></span>${esc(x.p)}</span></td><td class="num">${fmt(x.v,held?2:1)}${held?`<br><span class="unit">allein ${fmt(x.x,2)}</span>`:''}</td></tr>`).join(''):'<tr><td colspan="3" class="note">Noch keine Flüge.</td></tr>';
     const todaySnap=r&&r.snaps.find(s=>s.date===todayStr());
     if(!bil&&state.tab==='day'&&!(todaySnap&&todaySnap.flightDay)){ $('#scoreNote').textContent='Heute noch kein Flugtag ('+(todaySnap?todaySnap.flights:0)+' von mind. '+FLIGHTDAY_MIN+' Flügen). Punkte gibt es erst ab 5 Flügen.'; }
     else if(!bil) $('#scoreNote').textContent=held?'Fläche, die heute noch jedem gehört (geteilte Fläche zählt bei jedem).':'Punkte = gehaltene km² pro Flugtag (mind. 5 Flüge), allein × 1,2, geteilt × 1, plus Boni.';
@@ -519,7 +531,7 @@ svg.leaflet-zoom-animated{will-change:transform}
       for(const p in r.terr){
         if(!r.terr[p]||state.hidden.has(p)) continue;
         const c=hexOf(p);
-        const lyr=L.geoJSON(r.terr[p],{interactive:true,bubblingMouseEvents:false,style:{color:c,weight:1.5,fillColor:c,fillOpacity:.4}}).bindTooltip(`${esc(p)}: ${fmt(areaKm2(r.terr[p]),2)} km²`,{sticky:true});
+        const lyr=L.geoJSON(r.terr[p],{interactive:true,bubblingMouseEvents:false,style:{color:c,weight:1.5,fillColor:c,fillOpacity:.4}}).bindTooltip(`<strong>${esc(p)}</strong><br>${fmt(areaKm2(r.terr[p]),2)} km² gehalten`,{sticky:true,direction:'top',offset:[0,-8]});
         lyr.on('mouseover',()=>setHL(p,true)); lyr.on('mouseout',()=>setHL(null)); lyr.on('click',()=>{ state.pinned=state.pinned===p?null:p; setHL(p,true); });
         lyr.addTo(overlay); bounds.push(lyr.getBounds()); terrLayers[p]=lyr;
       }
@@ -531,7 +543,11 @@ svg.leaflet-zoom-animated{will-change:transform}
     }
     if(bounds.length){ let b=bounds[0]; bounds.slice(1).forEach(x=>b=b.extend(x)); map.fitBounds(b,{padding:[20,20]}); }
     const pilots=[...new Set(state.flights.map(f=>f.pilot))];
-    $('#legend').innerHTML=pilots.map(p=>`<button type="button" class="${state.hidden.has(p)?'off':''}" data-p="${esc(p)}"><span class="sw" style="background:${colorOf(p)}"></span>${esc(p)}</button>`).join('')+(pilots.length?'<button type="button" class="all" data-all="1">alle zeigen</button><button type="button" class="all" data-none="1">alle ausblenden</button><span><span class="sw" style="background:none;border-top:2px dashed var(--ink-2);height:0;border-radius:0"></span>Track</span>':'');
+    const q=($('#pSearch').value||'').toLowerCase();
+    const sorted=pilots.slice().sort((a,b)=>a.localeCompare(b,'de',{sensitivity:'base'}));
+    $('#legend').innerHTML=sorted.filter(p=>!q||p.toLowerCase().includes(q)).map(p=>`<button type="button" class="${state.hidden.has(p)?'off':''}" data-p="${esc(p)}"><span class="sw" style="background:${colorOf(p)}"></span>${esc(p)}</button>`).join('')||'<span class="unit">Kein Pilot gefunden.</span>';
+    const hid=pilots.filter(p=>state.hidden.has(p)).length;
+    $('#plistSum').textContent='Piloten ('+pilots.length+')'+(hid?' · '+hid+' ausgeblendet':'')+' · aufklappen zum Ein- und Ausblenden';
     setHL(null);
     const total=r?Object.keys(r.terr).filter(p=>!state.hidden.has(p)).reduce((a,p)=>a+areaKm2(r.terr[p]),0):0;
     const fd=r?r.snaps.filter(s=>s.flightDay).length:0; const rd=r?r.snaps.filter(s=>!s.flightDay&&s.flights>0).length:0;
@@ -539,7 +555,7 @@ svg.leaflet-zoom-animated{will-change:transform}
   }
 
   let calcTok=0;
-  async function refresh(){ showErr(''); const tok=++calcTok; try{ const ok=await compute(tok); if(ok===false) return; }catch(e){ showErr('Berechnung fehlgeschlagen: '+e.message); } if(tok===calcTok) render(); }
+  async function refresh(){ showErr(''); const tok=++calcTok; try{ const ok=await compute(tok); if(ok===false) return; }catch(e){ showErr('Berechnung fehlgeschlagen: '+e.message); } if(tok===calcTok){ const h=$('#hint'); h.textContent=h.textContent.replace(' Gespeichertes Ergebnis veraltet, wird neu gerechnet …',''); render(); } }
   function showErr(m){ const el=$('#err'); el.textContent=m; el.hidden=!m; }
 
   function loadSample(){ state.flights=SAMPLE.map(f=>({...f,coords:f.coords.map(c=>c.slice())})); $('#hint').hidden=false; refresh(); }
@@ -587,6 +603,9 @@ svg.leaflet-zoom-animated{will-change:transform}
   document.addEventListener('mouseover',e=>{ const tr=e.target.closest('tr[data-p]'); if(tr) setHL(tr.dataset.p); const b=e.target.closest('.legend button[data-p]'); if(b) setHL(b.dataset.p); });
   document.addEventListener('mouseout',e=>{ if(e.target.closest('tr[data-p],.legend button[data-p]')) setHL(null); });
   document.querySelectorAll('#bilanzTable th[data-bk]').forEach(th=>{th.style.cursor='pointer';th.addEventListener('click',()=>{const k=th.dataset.bk; if(state.bsort.key===k) state.bsort.dir*=-1; else state.bsort={key:k,dir:k==='p'?1:-1}; render();});});
+  $('#pSearch').addEventListener('input',()=>renderMap());
+  $('#pAll').addEventListener('click',()=>{ state.hidden.clear(); state.excludeHidden?refresh():render(); });
+  $('#pNone').addEventListener('click',()=>{ state.flights.forEach(f=>state.hidden.add(f.pilot)); state.excludeHidden?refresh():render(); });
   $('#legend').addEventListener('click',e=>{
     const b=e.target.closest('button'); if(!b) return;
     if(b.dataset.all){ state.hidden.clear(); }
