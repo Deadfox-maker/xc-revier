@@ -221,7 +221,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v57 (28.09. 13:22)</span>
+  <span class="lbl" id="version">v58 (28.09. 15:06)</span>
 </header>
 
 <div class="wrap">
@@ -385,6 +385,23 @@ svg.leaflet-zoom-animated{will-change:transform}
   }
 
   function simp(g){ if(!g) return g; try{ return turf.simplify(g,{tolerance:0.00005,highQuality:false,mutate:false}); }catch(e){ return g; } }
+  function xcScore(coords){
+    let pts=coords; let tol=0.0005;
+    while(pts.length>140&&tol<0.02){ try{ pts=turf.simplify(turf.lineString(coords),{tolerance:tol,highQuality:false}).geometry.coordinates; }catch(e){ break; } tol*=1.6; }
+    const n=pts.length; if(n<3) return null;
+    const lat0=Math.cos(pts[0][1]*Math.PI/180); const kx=111.32*lat0, ky=110.57;
+    const D=new Array(n); for(let i=0;i<n;i++){ D[i]=new Float32Array(n); for(let j=0;j<i;j++){ const dx=(pts[i][0]-pts[j][0])*kx, dy=(pts[i][1]-pts[j][1])*ky; D[i][j]=D[j][i]=Math.sqrt(dx*dx+dy*dy); } }
+    let best=0, type='Freie Strecke';
+    let prev=new Float32Array(n); for(let i=0;i<n;i++) prev[i]=0;
+    for(let leg=0;leg<4;leg++){ const cur=new Float32Array(n); for(let j=0;j<n;j++){ let m=0; for(let i=0;i<=j;i++){ const v=prev[i]+D[i][j]; if(v>m) m=v; } cur[j]=m; } prev=cur; }
+    for(let j=0;j<n;j++) if(prev[j]>best) best=prev[j];
+    const G=new Array(n); for(let i=0;i<n;i++) G[i]=new Float32Array(n);
+    for(let i=0;i<n;i++) for(let k=n-1;k>=i;k--){ let g=D[i][k]; if(i>0&&G[i-1][k]<g) g=G[i-1][k]; if(k<n-1&&G[i][k+1]<g) g=G[i][k+1]; G[i][k]=g; }
+    let bestT=0, fai=false;
+    for(let i=0;i<n;i++) for(let j=i+1;j<n;j++){ const dij=D[i][j]; for(let k=j+1;k<n;k++){ const per=dij+D[j][k]+D[k][i]; if(per*1.4<=bestT) continue; if(G[i][k]>0.05*per) continue; const mn=Math.min(dij,D[j][k],D[k][i]); const f=mn>=0.28*per; const sc=per*(f?1.4:1.2); if(sc>bestT){ bestT=sc; fai=f; } } }
+    if(bestT>best){ best=bestT; type=fai?'FAI-Dreieck':'Flaches Dreieck'; }
+    return {pts:Math.round(best*10)/10,type};
+  }
   function flightGeometry(f,corrKm){
     if(f._fg&&f._fgC===corrKm) return f._fg;
     let line=turf.simplify(turf.lineString(f.coords),{tolerance:0.0003,highQuality:false});
@@ -399,7 +416,8 @@ svg.leaflet-zoom-animated{will-change:transform}
     const fillArea=turf.area(geom);
     let shape='Linie';
     if(fillArea>corrArea*1.05) shape=closed?'Dreieck/Schleife':'Schleife im Track';
-    f._fgC=corrKm; return f._fg={geom:simp(geom),shape,len,closing,closed};
+    let xc=null; try{ xc=xcScore(f.coords); }catch(e){}
+    f._fgC=corrKm; return f._fg={geom:simp(geom),shape,len,closing,closed,xc};
   }
 
   const areaKm2=g=>g?turf.area(g)/1e6:0;
@@ -462,7 +480,19 @@ svg.leaflet-zoom-animated{will-change:transform}
   function safeDiff(a,b){ if(!a) return null; if(!b) return a; try{ return turf.difference(a,b); }catch(e){ return a; } }
   function safeInter(a,b){ if(!a||!b) return null; try{ return turf.intersect(a,b); }catch(e){ return null; } }
   const addDays=(ds,n)=>{const d=new Date(ds+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
-  const temps={};
+  const temps={}; const places={};
+  async function fetchPlaces(flights,tok){
+    const need=flights.filter(f=>!(tempKey(f) in places)&&f.coords&&f.coords.length);
+    if(!need.length) return; let i=0;
+    for(const f of need){
+      i++; if(busyOn) busy('Suche Startplatz-Namen ('+i+' von '+need.length+')',0.05+0.1*i/need.length);
+      const [lon,lat]=f.coords[0]; const key=lat.toFixed(2)+','+lon.toFixed(2);
+      const same=Object.keys(places).find(k=>places[k]&&places[k]._c===key);
+      if(same){ places[tempKey(f)]=places[same]; continue; }
+      try{ const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat.toFixed(5)}&lon=${lon.toFixed(5)}&zoom=14&accept-language=de`); if(r.ok){ const j=await r.json(); const a=j.address||{}; const name=a.village||a.hamlet||a.town||a.suburb||a.municipality||a.city||a.locality||j.name||''; const reg=a.county||a.state||''; places[tempKey(f)]={n:name,r:reg,_c:key}; } else places[tempKey(f)]=null; }catch(e){ places[tempKey(f)]=null; }
+      await new Promise(r=>setTimeout(r,1100)); if(tok!==calcTok) return;
+    }
+  }
   const tempKey=f=>f.pilot+'|'+f.date+'|'+f.time;
   const tempOf=f=>{ const t=temps[tempKey(f)]; return (t==null||isNaN(t))?null:t; };
   async function fetchTemps(flights,tok){
@@ -491,6 +521,7 @@ svg.leaflet-zoom-animated{will-change:transform}
   async function compute(tok){
     const corrKm=state.corridor/1000;
     try{ await fetchTemps(state.flights.filter(f=>!validate(f)),tok); }catch(e){}
+    try{ await fetchPlaces(state.flights.filter(f=>!validate(f)),tok); }catch(e){}
     if(tok!==calcTok) return false;
     const invalid=state.flights.filter(f=>validate(f));
     const fl=state.flights.filter(f=>!validate(f)&&!(state.excludeHidden&&state.hidden.has(f.pilot))).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
@@ -539,7 +570,7 @@ svg.leaflet-zoom-animated{will-change:transform}
           if(qualifies&&late) txt.push('kein Übernahme-Bonus: '+upDays+' Tage nach dem Flug hochgeladen (erlaubt '+LATE_DAYS+')');
           if(qualifies&&!late){ tb=captured*TAKE_BONUS; b+=tb; txt.push('Übernahme '+fmt(captured,2)+' km² × 20 % = '+fmt(captured*TAKE_BONUS,2)+' (genommen von '+takeTxt.join(', ')+')'); }
           bonus[p]=(bonus[p]||0)+b;
-          const ev={f,shape:fg.shape,area:total,inc,overlapOwn,captured,len:fg.len,excl:0,shared:0,base:0,geom:fg.geom,incGeom,bonus:b,nb,eb,tb,bonusTxt:txt,dayTotal:null,flightsToday:0};
+          const ev={f,shape:fg.shape,xc:fg.xc,area:total,inc,overlapOwn,captured,len:fg.len,excl:0,shared:0,base:0,geom:fg.geom,incGeom,bonus:b,nb,eb,tb,bonusTxt:txt,dayTotal:null,flightsToday:0};
           if(prev&&overlapOwn>=LOOP_MIN){ loopN[p]=(loopN[p]||0)+1; ev.loopNo=loopN[p]; ev.loopPct=LOOP_FIRST+LOOP_STEP*(loopN[p]-1); loopPct[p]=(loopPct[p]||0)+ev.loopPct; }
           events.push(ev); dayEvents.push(ev);
           soFar[p]=unionAll([prev,fg.geom]);
@@ -588,7 +619,7 @@ svg.leaflet-zoom-animated{will-change:transform}
         flightDays++; exclHist.push(exclG);
         snaps.push({date:ds,flightDay:true,flights:todays.length,areas:{...areas},score,base:{...base},excl:{...exclA},longHeld:{...longA},bonus,pen:penA,decay:decayA,inactive:inactA,ageW:ageWA});
       }else{
-        todays.forEach(({f,fg})=>events.push({f,shape:fg.shape,area:areaKm2(fg.geom),inc:0,overlapOwn:0,captured:0,len:fg.len,excl:0,shared:0,base:0,bonus:0,bonusTxt:[],dayTotal:null,flightsToday:todays.length,restDay:true}));
+        todays.forEach(({f,fg})=>events.push({f,shape:fg.shape,xc:fg.xc,area:areaKm2(fg.geom),inc:0,overlapOwn:0,captured:0,len:fg.len,excl:0,shared:0,base:0,bonus:0,bonusTxt:[],dayTotal:null,flightsToday:todays.length,restDay:true}));
         snaps.push({date:ds,flightDay:false,flights:todays.length,areas:last?{...last.areas}:{},score:{},base:{},excl:last?{...last.excl}:{},longHeld:{},bonus:{}});
       }
       d.setUTCDate(d.getUTCDate()+1);
@@ -692,7 +723,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     const evs=r?r.events.filter(e=>!state.hidden.has(e.f.pilot)&&(!state.flDate||e.f.date===state.flDate)&&(!state.flPilot||e.f.pilot===state.flPilot)).sort((a,b)=>{const x=keyOf(a),y=keyOf(b);return (x<y?-1:x>y?1:0)*S.dir;}):[];
     document.querySelectorAll('.flights th[data-key]').forEach(th=>{th.textContent=th.dataset.label+(th.dataset.key===S.key?(S.dir>0?' ▲':' ▼'):'');});
     { const sel=$('#flPilot'); const names=[...new Set(state.flights.map(f=>f.pilot))].sort((a,b)=>a.localeCompare(b)); const want='<option value="">Alle Piloten</option>'+names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join(''); if(sel._k!==want){ sel.innerHTML=want; sel._k=want; } sel.value=names.includes(state.flPilot)?state.flPilot:''; if(sel.value!==state.flPilot) state.flPilot=sel.value; sel.style.borderColor=state.flPilot?'var(--accent)':''; $('#flCount').textContent=evs.length?evs.length+(evs.length===1?' Flug':' Flüge')+(state.flPilot?' von '+state.flPilot:''):''; }
-    $('#flightRows').innerHTML=evs.length?evs.map(e=>e.invalid?`<tr data-p="${esc(e.f.pilot)}"${unsavedRow(e.f)?' class="unsaved"':''}><td>${unsavedRow(e.f)?'<span class="tag new">neu</span><br>':''}${e.f.date}<br><span class="unit">${e.f.time.slice(0,2)}:${e.f.time.slice(2,4)} UTC</span></td><td><span class="pilot"><span class="sw" style="background:${colorOf(e.f.pilot)}"></span>${esc(e.f.pilot)}</span></td><td colspan="6"><span class="tag" style="color:#E24B4A;border-color:#E24B4A">ungültig</span><br><span class="unit" style="color:#E24B4A">${esc(e.invalid)}. Flug zählt nicht.</span></td></tr>`:`<tr data-p="${esc(e.f.pilot)}"${unsavedRow(e.f)?' class="unsaved"':''}><td>${unsavedRow(e.f)?'<span class="tag new">neu</span><br>':''}${e.f.date}<br><span class="unit">${e.f.time.slice(0,2)}:${e.f.time.slice(2,4)} UTC</span></td><td><span class="pilot"><span class="sw" style="background:${colorOf(e.f.pilot)}"></span>${esc(e.f.pilot)}</span><span class="unit">EN-${classOf(e.f.pilot)||'?'} (×${classFactor(e.f.pilot)})</span>${e.f.glider?`<br><span class="unit">${esc(e.f.glider)}</span>`:''}</td><td><span class="tag">${e.shape}</span><br><span class="unit">${fmt(e.len,0)} km Track${e.temp!=null?` · 🌡 ${fmt(e.temp,0)} °C am Start${e.wbTxt?(e.wbTxt.startsWith('Frost')?' ❄':' 🔥'):''}`:''}</span>${e.restDay?`<br><span class="unit" style="color:var(--ink-2)">Ruhetag: nur ${e.flightsToday} von mind. ${FLIGHTDAY_MIN} Flügen, keine Wertung</span>`:''}${e.restDay?'':''}${e.overlapOwn>0.005?`<br><span class="unit">deckt sich zu ${Math.round(e.overlapOwn*100)} % mit eigenem Vorflug</span>`:''}${e.loopNo?`<br><span class="unit" style="color:#E24B4A">Wiederholung: ${Math.round(e.overlapOwn*100)} % deckungsgleich, ${e.loopNo}. Wiederholung, ${Math.round(e.loopPct*100)} % Abzug vom Tag</span>`:''}${e.restDay?'':`<br><span class="unit">+ allein ${fmt(e.excl,2)} km² × 1,2 = ${fmt(e.excl*EXCL,2)}</span><br><span class="unit">+ geteilt ${fmt(e.shared,2)} km² × 1 = ${fmt(e.shared,2)}</span><br><span class="unit" style="font-weight:600">= Grundpunkte ${fmt(e.base,2)}</span>${e.bonusTxt.length?e.bonusTxt.map(t=>`<br><span class="unit" style="color:var(--accent)">+ ${t}</span>`).join('')+`<br><span class="unit" style="color:var(--accent);font-weight:600">= Bonus ${fmt(e.bonus,2)}</span>`:''}<br><span class="unit" style="font-weight:600">Grundpunkte ${fmt(e.base,2)} + Bonus ${fmt(e.bonus,2)} = ${fmt(e.base+e.bonus,2)} Punkte für diesen Flug</span>`}${e.dayTotal!=null?(()=>{const cs=Math.max(0,e.carry-e.carryExcl), cl=e.carryLong||0, ce=Math.max(0,e.carryExcl-cl); const cp=e.carryPts!=null?e.carryPts:ce*EXCL+cl*HOLD_F+cs; const pen=e.dayPen||0; const flightsSum=e.dayTotal+pen-cp; return `${e.carry>0.005?`<br><span class="unit">+ aus früheren Tagen gehalten: ${fmt(e.carry,2)} km² (allein ${fmt(ce+cl,2)}, geteilt ${fmt(cs,2)})${e.carryAgeW!=null&&e.carryAgeW<0.999?', nach Alter der Flächen gewichtet':''} = ${fmt(cp,2)}</span>`:''}<br><span class="unit" style="font-weight:600;color:var(--accent)">Tag gesamt ${e.flightsToday>1?fmt(flightsSum,2)+' (aus '+e.flightsToday+' Flügen)':fmt(flightsSum,2)}${e.carry>0.005?' + '+fmt(cp,2):''}${pen>0.005?' − '+fmt(pen,2)+' (Wiederholung '+Math.round(e.dayPenPct*100)+' %)':''} = ${fmt(e.dayTotal,2)}</span>`;})():''}</td><td class="num">${fmt(e.area,2)}</td><td class="num">${fmt(e.inc,2)}</td><td class="num">${fmt(e.excl,2)}</td><td class="num">${e.captured>0.005?fmt(e.captured,2):'–'}</td><td class="num">${e.restDay?'<span class="unit">–</span>':`<strong>${fmt(e.base+e.bonus,2)}</strong>`}${e.dayTotal!=null?`<br><span class="unit" style="color:var(--accent);font-weight:600">Tag ${fmt(e.dayTotal,2)}</span>`:''}</td></tr>`).join(''):(state.flPilot||state.flDate?'<tr><td colspan="8" class="note">Keine Flüge für diesen Filter.</td></tr>':'<tr><td colspan="8" class="note">Noch keine Flüge geladen.</td></tr>');
+    $('#flightRows').innerHTML=evs.length?evs.map(e=>e.invalid?`<tr data-p="${esc(e.f.pilot)}"${unsavedRow(e.f)?' class="unsaved"':''}><td>${unsavedRow(e.f)?'<span class="tag new">neu</span><br>':''}${e.f.date}<br><span class="unit">${e.f.time.slice(0,2)}:${e.f.time.slice(2,4)} UTC</span></td><td><span class="pilot"><span class="sw" style="background:${colorOf(e.f.pilot)}"></span>${esc(e.f.pilot)}</span></td><td colspan="6"><span class="tag" style="color:#E24B4A;border-color:#E24B4A">ungültig</span><br><span class="unit" style="color:#E24B4A">${esc(e.invalid)}. Flug zählt nicht.</span></td></tr>`:`<tr data-p="${esc(e.f.pilot)}"${unsavedRow(e.f)?' class="unsaved"':''}><td>${unsavedRow(e.f)?'<span class="tag new">neu</span><br>':''}${e.f.date}<br><span class="unit">${e.f.time.slice(0,2)}:${e.f.time.slice(2,4)} UTC</span></td><td><span class="pilot"><span class="sw" style="background:${colorOf(e.f.pilot)}"></span>${esc(e.f.pilot)}</span><span class="unit">EN-${classOf(e.f.pilot)||'?'} (×${classFactor(e.f.pilot)})</span>${e.f.glider?`<br><span class="unit">${esc(e.f.glider)}</span>`:''}</td><td><span class="tag">${e.shape}</span>${(()=>{const pl=places[tempKey(e.f)]; const h=Math.round(e.f.coords&&e.f.coords[0]?0:0); return (pl&&pl.n?`<br><span class="unit">🛫 ${esc(pl.n)}${pl.r?' ('+esc(pl.r)+')':''}</span>`:'')+(e.xc?`<br><span class="unit">≈ ${fmt(e.xc.pts,1)} XC-Punkte, ${e.xc.type}</span>`:'');})()}<br><span class="unit">${fmt(e.len,0)} km Track${e.temp!=null?` · 🌡 ${fmt(e.temp,0)} °C am Start${e.wbTxt?(e.wbTxt.startsWith('Frost')?' ❄':' 🔥'):''}`:''}</span>${e.restDay?`<br><span class="unit" style="color:var(--ink-2)">Ruhetag: nur ${e.flightsToday} von mind. ${FLIGHTDAY_MIN} Flügen, keine Wertung</span>`:''}${e.restDay?'':''}${e.overlapOwn>0.005?`<br><span class="unit">deckt sich zu ${Math.round(e.overlapOwn*100)} % mit eigenem Vorflug</span>`:''}${e.loopNo?`<br><span class="unit" style="color:#E24B4A">Wiederholung: ${Math.round(e.overlapOwn*100)} % deckungsgleich, ${e.loopNo}. Wiederholung, ${Math.round(e.loopPct*100)} % Abzug vom Tag</span>`:''}${e.restDay?'':`<br><span class="unit">+ allein ${fmt(e.excl,2)} km² × 1,2 = ${fmt(e.excl*EXCL,2)}</span><br><span class="unit">+ geteilt ${fmt(e.shared,2)} km² × 1 = ${fmt(e.shared,2)}</span><br><span class="unit" style="font-weight:600">= Grundpunkte ${fmt(e.base,2)}</span>${e.bonusTxt.length?e.bonusTxt.map(t=>`<br><span class="unit" style="color:var(--accent)">+ ${t}</span>`).join('')+`<br><span class="unit" style="color:var(--accent);font-weight:600">= Bonus ${fmt(e.bonus,2)}</span>`:''}<br><span class="unit" style="font-weight:600">Grundpunkte ${fmt(e.base,2)} + Bonus ${fmt(e.bonus,2)} = ${fmt(e.base+e.bonus,2)} Punkte für diesen Flug</span>`}${e.dayTotal!=null?(()=>{const cs=Math.max(0,e.carry-e.carryExcl), cl=e.carryLong||0, ce=Math.max(0,e.carryExcl-cl); const cp=e.carryPts!=null?e.carryPts:ce*EXCL+cl*HOLD_F+cs; const pen=e.dayPen||0; const flightsSum=e.dayTotal+pen-cp; return `${e.carry>0.005?`<br><span class="unit">+ aus früheren Tagen gehalten: ${fmt(e.carry,2)} km² (allein ${fmt(ce+cl,2)}, geteilt ${fmt(cs,2)})${e.carryAgeW!=null&&e.carryAgeW<0.999?', nach Alter der Flächen gewichtet':''} = ${fmt(cp,2)}</span>`:''}<br><span class="unit" style="font-weight:600;color:var(--accent)">Tag gesamt ${e.flightsToday>1?fmt(flightsSum,2)+' (aus '+e.flightsToday+' Flügen)':fmt(flightsSum,2)}${e.carry>0.005?' + '+fmt(cp,2):''}${pen>0.005?' − '+fmt(pen,2)+' (Wiederholung '+Math.round(e.dayPenPct*100)+' %)':''} = ${fmt(e.dayTotal,2)}</span>`;})():''}</td><td class="num">${fmt(e.area,2)}</td><td class="num">${fmt(e.inc,2)}</td><td class="num">${fmt(e.excl,2)}</td><td class="num">${e.captured>0.005?fmt(e.captured,2):'–'}</td><td class="num">${e.restDay?'<span class="unit">–</span>':`<strong>${fmt(e.base+e.bonus,2)}</strong>`}${e.dayTotal!=null?`<br><span class="unit" style="color:var(--accent);font-weight:600">Tag ${fmt(e.dayTotal,2)}</span>`:''}</td></tr>`).join(''):(state.flPilot||state.flDate?'<tr><td colspan="8" class="note">Keine Flüge für diesen Filter.</td></tr>':'<tr><td colspan="8" class="note">Noch keine Flüge geladen.</td></tr>');
     renderMap();
   }
 
@@ -927,7 +958,7 @@ svg.leaflet-zoom-animated{will-change:transform}
   function packResult(){
     const r=state.result; if(!r) return null;
     const ev=r.events.map(e=>{ const o={...e}; o.k=fkey(e.f); delete o.f; delete o.geom; delete o.incGeom; return o; });
-    return {sig:inputSig(),terr:r.terr,snaps:r.snaps,events:ev,fl:r.fl.map(fkey),gliderOfPilot,classOfPilot,temps};
+    return {sig:inputSig(),terr:r.terr,snaps:r.snaps,events:ev,fl:r.fl.map(fkey),gliderOfPilot,classOfPilot,temps,places};
   }
   function extendSnaps(snaps){
     if(!snaps.length) return snaps;
@@ -939,7 +970,7 @@ svg.leaflet-zoom-animated{will-change:transform}
   }
   function applyResult(data){
     const byKey={}; state.flights.forEach(f=>byKey[fkey(f)]=f);
-    Object.assign(gliderOfPilot,data.gliderOfPilot||{}); Object.assign(classOfPilot,data.classOfPilot||{}); if(data.temps) for(const k in data.temps){ if(temps[k]==null&&data.temps[k]!=null) temps[k]=data.temps[k]; }
+    Object.assign(gliderOfPilot,data.gliderOfPilot||{}); Object.assign(classOfPilot,data.classOfPilot||{}); if(data.temps) for(const k in data.temps){ if(temps[k]==null&&data.temps[k]!=null) temps[k]=data.temps[k]; } if(data.places) for(const k in data.places){ if(!(k in places)&&data.places[k]) places[k]=data.places[k]; }
     const events=data.events.map(o=>{ const e={...o,f:byKey[o.k]}; delete e.k; return e; }).filter(e=>e.f);
     state.result={terr:data.terr,snaps:extendSnaps(data.snaps),events,fl:data.fl.map(k=>byKey[k]).filter(Boolean)};
   }
