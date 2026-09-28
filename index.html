@@ -105,6 +105,8 @@ tr:last-child td{border-bottom:0}
 .editbox{margin:6px 0;padding:8px;border:1px solid var(--accent);border-radius:6px;background:var(--bg);max-width:280px}
 .editbox input[type=text]{width:100%;font-family:var(--font-body);font-size:14px;padding:5px 7px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink);margin:4px 0}
 .editbox label{display:block;margin:4px 0}
+.editbox select{width:100%;font-family:var(--font-body);font-size:14px;padding:5px 7px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink);margin:4px 0}
+.editbox .lbl{margin-top:4px}
 .flights tr.unsaved td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 .tag.new{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .busy{margin:0 14px 12px;padding:10px 12px;border:1px solid var(--accent);border-radius:6px;background:color-mix(in srgb,var(--accent) 10%,transparent)}
@@ -277,7 +279,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v60 (28.09. 17:22)</span>
+  <span class="lbl" id="version">v61 (28.09. 17:26)</span>
   <button type="button" class="mgear" id="mGear" aria-label="Hochladen und Einstellungen">⚙</button>
 </header>
 <nav class="mnav" id="mNav"><button type="button" data-v="map" aria-current="true"><b>🗺</b>Karte</button><button type="button" data-v="score"><b>🏆</b>Rangliste</button><button type="button" data-v="fl"><b>✈</b>Flüge</button><button type="button" data-v="rules"><b>📖</b>Regeln</button></nav>
@@ -577,7 +579,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     }
   }
   async function compute(tok){
-    const corrKm=state.corridor/1000;
+    const corrKm=state.corridor/1000; const sig0=inputSig();
     try{ await fetchTemps(state.flights.filter(f=>!validate(f)),tok); }catch(e){}
     try{ await fetchPlaces(state.flights.filter(f=>!validate(f)),tok); }catch(e){}
     if(tok!==calcTok) return false;
@@ -683,7 +685,8 @@ svg.leaflet-zoom-animated{will-change:transform}
       d.setUTCDate(d.getUTCDate()+1);
     }
     invalid.forEach(f=>events.push({f,invalid:validate(f),shape:'ungültig',area:0,inc:0,overlapOwn:0,captured:0,len:0,excl:0,shared:0,base:0,bonus:0,bonusTxt:[],dayTotal:null,flightsToday:0}));
-    state.result={terr,events,snaps,fl};
+    if(tok!==calcTok) return false;
+    state.result={terr,events,snaps,fl,sig:sig0};
   }
 
   function scores(){
@@ -797,7 +800,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     const evs=r?r.events.filter(e=>!state.hidden.has(e.f.pilot)&&(!state.flDate||e.f.date===state.flDate)&&(!state.flPilot||e.f.pilot===state.flPilot)).sort((a,b)=>{const x=keyOf(a),y=keyOf(b);return (x<y?-1:x>y?1:0)*S.dir;}):[];
     document.querySelectorAll('.flights th[data-key]').forEach(th=>{th.textContent=th.dataset.label+(th.dataset.key===S.key?(S.dir>0?' ▲':' ▼'):'');});
     { const sel=$('#flPilot'); const names=[...new Set(state.flights.map(f=>f.pilot))].sort((a,b)=>a.localeCompare(b)); const want='<option value="">Alle Piloten</option>'+names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join(''); if(sel._k!==want){ sel.innerHTML=want; sel._k=want; } sel.value=names.includes(state.flPilot)?state.flPilot:''; if(sel.value!==state.flPilot) state.flPilot=sel.value; sel.style.borderColor=state.flPilot?'var(--accent)':''; $('#flCount').textContent=evs.length?evs.length+(evs.length===1?' Flug':' Flüge')+(state.flPilot?' von '+state.flPilot:''):''; }
-    $('#flightRows').innerHTML=evs.length?evs.map(e=>e.invalid?`<tr data-p="${esc(e.f.pilot)}"${unsavedRow(e.f)?' class="unsaved"':''}><td>${unsavedRow(e.f)?'<span class="tag new">neu</span><br>':''}${e.f.date}<br><span class="unit">${e.f.time.slice(0,2)}:${e.f.time.slice(2,4)} UTC</span></td><td><span class="pilot"><span class="sw" style="background:${colorOf(e.f.pilot)}"></span>${esc(e.f.pilot)}</span></td><td colspan="6"><span class="tag" style="color:#E24B4A;border-color:#E24B4A">ungültig</span><br><span class="unit" style="color:#E24B4A">${esc(e.invalid)}. Flug zählt nicht.</span></td></tr>`:`<tr data-p="${esc(e.f.pilot)}"${unsavedRow(e.f)?' class="unsaved"':''}><td>${unsavedRow(e.f)?'<span class="tag new">neu</span><br>':''}${e.f.date}<br><span class="unit">${e.f.time.slice(0,2)}:${e.f.time.slice(2,4)} UTC</span></td><td><span class="pilot"><span class="sw" style="background:${colorOf(e.f.pilot)}"></span>${esc(e.f.pilot)}</span>${e.f.inDb&&$('#dbtools')&&!$('#dbtools').hidden?`<button type="button" class="edit" data-edit="${esc(fkey(e.f))}" title="Pilot ändern oder Flug löschen">✎</button>`:''}${state.editKey===fkey(e.f)?editForm(e.f):''}<span class="unit">EN-${classOf(e.f.pilot)||'?'} (×${classFactor(e.f.pilot)})</span>${e.f.glider?`<br><span class="unit">${esc(e.f.glider)}</span>`:''}</td><td><span class="tag">${e.shape}</span>${(()=>{const pl=places[tempKey(e.f)]; const h=Math.round(e.f.coords&&e.f.coords[0]?0:0); return (pl&&pl.n?`<br><span class="unit">🛫 ${esc(pl.n)}${pl.r?' ('+esc(pl.r)+')':''}</span>`:'')+(e.xc?`<br><span class="unit">≈ ${fmt(e.xc.pts,1)} XC-Punkte, ${e.xc.type}</span>`:'');})()}<br><span class="unit">${fmt(e.len,0)} km Track${e.temp!=null?` · 🌡 ${fmt(e.temp,0)} °C am Start${e.wbTxt?(e.wbTxt.startsWith('Frost')?' ❄':' 🔥'):''}`:''}</span>${e.restDay?`<br><span class="unit" style="color:var(--ink-2)">Ruhetag: nur ${e.flightsToday} von mind. ${FLIGHTDAY_MIN} Flügen, keine Wertung</span>`:''}${e.restDay?'':''}${e.overlapOwn>0.005?`<br><span class="unit">deckt sich zu ${Math.round(e.overlapOwn*100)} % mit eigenem Vorflug</span>`:''}${e.loopNo?`<br><span class="unit" style="color:#E24B4A">Wiederholung: ${Math.round(e.overlapOwn*100)} % deckungsgleich, ${e.loopNo}. Wiederholung, ${Math.round(e.loopPct*100)} % Abzug vom Tag</span>`:''}<div class="calc">${e.restDay?'':`<br><span class="unit">+ allein ${fmt(e.excl,2)} km² × 1,2 = ${fmt(e.excl*EXCL,2)}</span><br><span class="unit">+ geteilt ${fmt(e.shared,2)} km² × 1 = ${fmt(e.shared,2)}</span><br><span class="unit" style="font-weight:600">= Grundpunkte ${fmt(e.base,2)}</span>${e.bonusTxt.length?e.bonusTxt.map(t=>`<br><span class="unit" style="color:var(--accent)">+ ${t}</span>`).join('')+`<br><span class="unit" style="color:var(--accent);font-weight:600">= Bonus ${fmt(e.bonus,2)}</span>`:''}<br><span class="unit" style="font-weight:600">Grundpunkte ${fmt(e.base,2)} + Bonus ${fmt(e.bonus,2)} = ${fmt(e.base+e.bonus,2)} Punkte für diesen Flug</span>`}${e.dayTotal!=null?(()=>{const cs=Math.max(0,e.carry-e.carryExcl), cl=e.carryLong||0, ce=Math.max(0,e.carryExcl-cl); const cp=e.carryPts!=null?e.carryPts:ce*EXCL+cl*HOLD_F+cs; const pen=e.dayPen||0; const flightsSum=e.dayTotal+pen-cp; return `${e.carry>0.005?`<br><span class="unit">+ aus früheren Tagen gehalten: ${fmt(e.carry,2)} km² (allein ${fmt(ce+cl,2)}, geteilt ${fmt(cs,2)})${e.carryAgeW!=null&&e.carryAgeW<0.999?', nach Alter der Flächen gewichtet':''} = ${fmt(cp,2)}</span>`:''}<br><span class="unit" style="font-weight:600;color:var(--accent)">Tag gesamt ${e.flightsToday>1?fmt(flightsSum,2)+' (aus '+e.flightsToday+' Flügen)':fmt(flightsSum,2)}${e.carry>0.005?' + '+fmt(cp,2):''}${pen>0.005?' − '+fmt(pen,2)+' (Wiederholung '+Math.round(e.dayPenPct*100)+' %)':''} = ${fmt(e.dayTotal,2)}</span>`;})():''}</div><button type="button" class="calctog">Rechnung ▾</button></td><td class="num">${fmt(e.area,2)}</td><td class="num">${fmt(e.inc,2)}</td><td class="num">${fmt(e.excl,2)}</td><td class="num">${e.captured>0.005?fmt(e.captured,2):'–'}</td><td class="num">${e.restDay?'<span class="unit">–</span>':`<strong>${fmt(e.base+e.bonus,2)}</strong>`}${e.dayTotal!=null?`<br><span class="unit" style="color:var(--accent);font-weight:600">Tag ${fmt(e.dayTotal,2)}</span>`:''}</td></tr>`).join(''):(state.flPilot||state.flDate?'<tr><td colspan="8" class="note">Keine Flüge für diesen Filter.</td></tr>':'<tr><td colspan="8" class="note">Noch keine Flüge geladen.</td></tr>');
+    $('#flightRows').innerHTML=evs.length?evs.map(e=>e.invalid?`<tr data-p="${esc(e.f.pilot)}"${unsavedRow(e.f)?' class="unsaved"':''}><td>${unsavedRow(e.f)?'<span class="tag new">neu</span><br>':''}${e.f.date}<br><span class="unit">${e.f.time.slice(0,2)}:${e.f.time.slice(2,4)} UTC</span></td><td><span class="pilot"><span class="sw" style="background:${colorOf(e.f.pilot)}"></span>${esc(e.f.pilot)}</span></td><td colspan="6"><span class="tag" style="color:#E24B4A;border-color:#E24B4A">ungültig</span><br><span class="unit" style="color:#E24B4A">${esc(e.invalid)}. Flug zählt nicht.</span></td></tr>`:`<tr data-p="${esc(e.f.pilot)}"${unsavedRow(e.f)?' class="unsaved"':''}><td>${unsavedRow(e.f)?'<span class="tag new">neu</span><br>':''}${e.f.date}<br><span class="unit">${e.f.time.slice(0,2)}:${e.f.time.slice(2,4)} UTC</span></td><td><span class="pilot"><span class="sw" style="background:${colorOf(e.f.pilot)}"></span>${esc(e.f.pilot)}</span>${e.f.inDb&&$('#dbtools')&&!$('#dbtools').hidden?`<button type="button" class="edit" data-edit="${esc(fkey(e.f))}" title="Pilot, Schirm oder Klasse ändern, Flug löschen">✎</button>`:''}${state.editKey===fkey(e.f)?editForm(e.f):''}<span class="unit">EN-${classOf(e.f.pilot)||'?'} (×${classFactor(e.f.pilot)})</span>${e.f.glider?`<br><span class="unit">${esc(e.f.glider)}</span>`:''}</td><td><span class="tag">${e.shape}</span>${(()=>{const pl=places[tempKey(e.f)]; const h=Math.round(e.f.coords&&e.f.coords[0]?0:0); return (pl&&pl.n?`<br><span class="unit">🛫 ${esc(pl.n)}${pl.r?' ('+esc(pl.r)+')':''}</span>`:'')+(e.xc?`<br><span class="unit">≈ ${fmt(e.xc.pts,1)} XC-Punkte, ${e.xc.type}</span>`:'');})()}<br><span class="unit">${fmt(e.len,0)} km Track${e.temp!=null?` · 🌡 ${fmt(e.temp,0)} °C am Start${e.wbTxt?(e.wbTxt.startsWith('Frost')?' ❄':' 🔥'):''}`:''}</span>${e.restDay?`<br><span class="unit" style="color:var(--ink-2)">Ruhetag: nur ${e.flightsToday} von mind. ${FLIGHTDAY_MIN} Flügen, keine Wertung</span>`:''}${e.restDay?'':''}${e.overlapOwn>0.005?`<br><span class="unit">deckt sich zu ${Math.round(e.overlapOwn*100)} % mit eigenem Vorflug</span>`:''}${e.loopNo?`<br><span class="unit" style="color:#E24B4A">Wiederholung: ${Math.round(e.overlapOwn*100)} % deckungsgleich, ${e.loopNo}. Wiederholung, ${Math.round(e.loopPct*100)} % Abzug vom Tag</span>`:''}<div class="calc">${e.restDay?'':`<br><span class="unit">+ allein ${fmt(e.excl,2)} km² × 1,2 = ${fmt(e.excl*EXCL,2)}</span><br><span class="unit">+ geteilt ${fmt(e.shared,2)} km² × 1 = ${fmt(e.shared,2)}</span><br><span class="unit" style="font-weight:600">= Grundpunkte ${fmt(e.base,2)}</span>${e.bonusTxt.length?e.bonusTxt.map(t=>`<br><span class="unit" style="color:var(--accent)">+ ${t}</span>`).join('')+`<br><span class="unit" style="color:var(--accent);font-weight:600">= Bonus ${fmt(e.bonus,2)}</span>`:''}<br><span class="unit" style="font-weight:600">Grundpunkte ${fmt(e.base,2)} + Bonus ${fmt(e.bonus,2)} = ${fmt(e.base+e.bonus,2)} Punkte für diesen Flug</span>`}${e.dayTotal!=null?(()=>{const cs=Math.max(0,e.carry-e.carryExcl), cl=e.carryLong||0, ce=Math.max(0,e.carryExcl-cl); const cp=e.carryPts!=null?e.carryPts:ce*EXCL+cl*HOLD_F+cs; const pen=e.dayPen||0; const flightsSum=e.dayTotal+pen-cp; return `${e.carry>0.005?`<br><span class="unit">+ aus früheren Tagen gehalten: ${fmt(e.carry,2)} km² (allein ${fmt(ce+cl,2)}, geteilt ${fmt(cs,2)})${e.carryAgeW!=null&&e.carryAgeW<0.999?', nach Alter der Flächen gewichtet':''} = ${fmt(cp,2)}</span>`:''}<br><span class="unit" style="font-weight:600;color:var(--accent)">Tag gesamt ${e.flightsToday>1?fmt(flightsSum,2)+' (aus '+e.flightsToday+' Flügen)':fmt(flightsSum,2)}${e.carry>0.005?' + '+fmt(cp,2):''}${pen>0.005?' − '+fmt(pen,2)+' (Wiederholung '+Math.round(e.dayPenPct*100)+' %)':''} = ${fmt(e.dayTotal,2)}</span>`;})():''}</div><button type="button" class="calctog">Rechnung ▾</button></td><td class="num">${fmt(e.area,2)}</td><td class="num">${fmt(e.inc,2)}</td><td class="num">${fmt(e.excl,2)}</td><td class="num">${e.captured>0.005?fmt(e.captured,2):'–'}</td><td class="num">${e.restDay?'<span class="unit">–</span>':`<strong>${fmt(e.base+e.bonus,2)}</strong>`}${e.dayTotal!=null?`<br><span class="unit" style="color:var(--accent);font-weight:600">Tag ${fmt(e.dayTotal,2)}</span>`:''}</td></tr>`).join(''):(state.flPilot||state.flDate?'<tr><td colspan="8" class="note">Keine Flüge für diesen Filter.</td></tr>':'<tr><td colspan="8" class="note">Noch keine Flüge geladen.</td></tr>');
     renderMap();
   }
 
@@ -870,7 +873,7 @@ svg.leaflet-zoom-animated{will-change:transform}
   }
 
   let calcTok=0;
-  async function refresh(){ showErr(''); const tok=++calcTok; try{ const ok=await compute(tok); if(ok===false) return; }catch(e){ showErr('Berechnung fehlgeschlagen: '+e.message); } if(tok===calcTok){ const h=$('#hint'); h.textContent=h.textContent.replace(' Gespeichertes Ergebnis veraltet, wird neu gerechnet …',''); render(); } }
+  async function refresh(){ showErr(''); const tok=++calcTok; try{ const ok=await compute(tok); if(ok===false) return false; }catch(e){ showErr('Berechnung fehlgeschlagen: '+e.message); return false; } if(tok!==calcTok) return false; { const h=$('#hint'); h.textContent=h.textContent.replace(' Gespeichertes Ergebnis veraltet, wird neu gerechnet …',''); render(); } return true; }
   let busyOn=false;
   function busy(t,frac){ busyOn=true; const b=$('#busy'); b.hidden=false; b.classList.remove('done'); $('#busyT').textContent=t; const bar=$('#busyI').parentNode; if(frac==null){ bar.classList.add('ind'); } else { bar.classList.remove('ind'); $('#busyI').style.width=Math.round(Math.max(0.03,Math.min(1,frac))*100)+'%'; } }
   function busyDone(t){ busyOn=false; const b=$('#busy'); if(!t){ b.hidden=true; return; } b.hidden=false; b.classList.add('done'); $('#busyT').textContent='✓ '+t; }
@@ -963,17 +966,26 @@ svg.leaflet-zoom-animated{will-change:transform}
     return (await r.json()).map(x=>({pilot:x.pilot,date:x.date,time:x.time,coords:x.coords,glider:x.glider||null,enClass:x.en_class||null,uploaded:x.created_at||null,inDb:true}));
   }
   function editForm(f){
-    const names=[...new Set(state.flights.map(x=>x.pilot))].filter(n=>n!==f.pilot).sort((a,b)=>a.localeCompare(b));
-    const sameG=f.glider?state.flights.filter(x=>x.inDb&&x.pilot===f.pilot&&x.glider===f.glider).length:0;
-    return `<div class="editbox" data-key="${esc(fkey(f))}"><div class="lbl">Pilot ändern</div><input type="text" list="pilotNames" class="ename" placeholder="Richtiger Name" value=""><datalist id="pilotNames">${names.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>${sameG>1?`<label class="unit"><input type="checkbox" class="eall"> auch die anderen ${sameG-1} Flüge von „${esc(f.pilot)}“ mit Schirm „${esc(f.glider)}“</label>`:''}<div class="controls" style="padding:6px 0 0;gap:6px"><button type="button" class="btn primary esave">Speichern</button><button type="button" class="btn ecancel">Abbrechen</button><button type="button" class="btn edel" style="margin-left:auto;color:#E24B4A">Flug löschen</button></div></div>`;
+    const names=[...new Set(state.flights.map(x=>x.pilot))].sort((a,b)=>a.localeCompare(b));
+    const same=state.flights.filter(x=>x.inDb&&x.pilot===f.pilot).length;
+    const cls=f.enClass||gliderClass(f.glider||'')||'';
+    const known=f.glider&&gliderClass(f.glider);
+    return `<div class="editbox" data-key="${esc(fkey(f))}">
+      <div class="lbl">Pilot</div><input type="text" list="pilotNames" class="ename" placeholder="Name" value="${f.pilot==='Unbekannt'?'':esc(f.pilot)}"><datalist id="pilotNames">${names.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+      <div class="lbl">Schirm</div><select class="eglider">${known?'':`<option value="__keep" selected>${esc(f.glider||'kein Schirm angegeben')} (unverändert)</option>`}${gliderOptions(known?f.glider:'')}</select>
+      <div class="lbl">Klasse</div><select class="eclass"><option value="">aus Schirm${cls?' ('+cls+')':''}</option>${['A','B','C','D','CCC'].map(c=>`<option value="${c}" ${f.enClass===c&&f.enClass!==gliderClass(f.glider||'')?'selected':''}>EN-${c}</option>`).join('')}</select>
+      ${same>1?`<label class="unit"><input type="checkbox" class="eall"> für alle ${same} Flüge von „${esc(f.pilot)}“ übernehmen</label>`:''}
+      <div class="controls" style="padding:6px 0 0;gap:6px"><button type="button" class="btn primary esave">Speichern</button><button type="button" class="btn ecancel">Abbrechen</button><button type="button" class="btn edel" style="margin-left:auto;color:#E24B4A">Flug löschen</button></div></div>`;
   }
-  async function renameFlights(list,newName,code){
+  async function updateFlights(list,newName,glider,cls,code){
     let n=0, errs=[];
     for(const f of list){
-      const r=await fetch(cfg.supabaseUrl+'/rest/v1/rpc/rename_flight',{method:'POST',headers:dbHeaders(),body:JSON.stringify({code,p_date:f.date,p_time:f.time,old_pilot:f.pilot,new_pilot:newName})});
-      if(r.ok){ const cnt=await r.json(); if(cnt===0){ state.flights=state.flights.filter(x=>x!==f); } else { f.pilot=newName; delete f._fg; } n++; }
+      const g=glider===null?null:glider, c=cls||(g?gliderClass(g):null)||null;
+      const r=await fetch(cfg.supabaseUrl+'/rest/v1/rpc/rename_flight',{method:'POST',headers:dbHeaders(),body:JSON.stringify({code,p_date:f.date,p_time:f.time,old_pilot:f.pilot,new_pilot:newName,new_glider:g,new_class:c})});
+      if(r.ok){ const cnt=await r.json(); if(cnt===0&&newName!==f.pilot){ state.flights=state.flights.filter(x=>x!==f); } else { f.pilot=newName; if(g) f.glider=g; if(c) f.enClass=c; delete f._fg; } n++; }
       else { let t=''; try{ t=(await r.json()).message||''; }catch(e){} errs.push(t||('HTTP '+r.status)); if(r.status===404) break; }
     }
+    for(const k in classOfPilot) delete classOfPilot[k]; for(const k in gliderOfPilot) delete gliderOfPilot[k];
     return {n,errs};
   }
   $('#flightRows').addEventListener('click',async e=>{
@@ -985,13 +997,14 @@ svg.leaflet-zoom-animated{will-change:transform}
     if(e.target.closest('.ecancel')){ state.editKey=null; render(); return; }
     if(e.target.closest('.esave')){
       const nn=box.querySelector('.ename').value.trim(); if(nn.length<2){ showErr('Bitte einen Namen eingeben.'); return; } if(!code){ showErr('Club-Code eingeben.'); return; }
+      const gv=box.querySelector('.eglider').value; const glider=(gv==='__keep'||!gv)?null:gv; const cls=box.querySelector('.eclass').value||null;
       const all=box.querySelector('.eall')&&box.querySelector('.eall').checked;
-      const list=all?state.flights.filter(x=>x.inDb&&x.pilot===f.pilot&&x.glider===f.glider):[f];
-      busy('Benenne '+list.length+(list.length===1?' Flug':' Flüge')+' um …',null);
-      const r=await renameFlights(list,nn,code);
-      state.editKey=null; state.flPilot=nn;
-      if(r.errs.length){ busyDone(''); showErr('Umbenennen fehlgeschlagen: '+r.errs[0]+(/rename_flight/.test(r.errs[0])||r.errs[0].includes('404')?' (SQL-Update 3 in Supabase ausführen)':'')); render(); return; }
-      busy('Umbenannt. Berechne alles neu …',0.1); await recalcAndSave(code); busyDone(r.n+(r.n===1?' Flug':' Flüge')+' auf „'+nn+'“ umbenannt und neu gerechnet.'); showErr('');
+      const list=all?state.flights.filter(x=>x.inDb&&x.pilot===f.pilot):[f];
+      busy('Speichere '+list.length+(list.length===1?' Flug':' Flüge')+' …',null);
+      const r=await updateFlights(list,nn,glider,cls,code);
+      state.editKey=null; if(nn!==f.pilot&&state.flPilot) state.flPilot=nn;
+      if(r.errs.length){ busyDone(''); showErr('Ändern fehlgeschlagen: '+r.errs[0]+' (SQL-Update 4 in Supabase ausgeführt?)'); render(); return; }
+      render(); scheduleRecalc(code,r.n+(r.n===1?' Flug':' Flüge')+' geändert.');
       return;
     }
     if(e.target.closest('.edel')){
@@ -1000,8 +1013,8 @@ svg.leaflet-zoom-animated{will-change:transform}
       busy('Lösche Flug …',null);
       const r=await fetch(cfg.supabaseUrl+'/rest/v1/rpc/delete_flight',{method:'POST',headers:dbHeaders(),body:JSON.stringify({code,p_date:f.date,p_time:f.time,p_pilot:f.pilot})});
       if(!r.ok){ busyDone(''); showErr('Löschen fehlgeschlagen (HTTP '+r.status+'). SQL-Update 3 ausgeführt?'); return; }
-      state.flights=state.flights.filter(x=>x!==f); state.editKey=null;
-      busy('Gelöscht. Berechne alles neu …',0.1); await recalcAndSave(code); busyDone('Flug gelöscht und neu gerechnet.'); showErr('');
+      state.flights=state.flights.filter(x=>x!==f); state.editKey=null; dropFromResult([f]);
+      scheduleRecalc(code,'Flug gelöscht.');
     }
   });
   async function dbInsert(fl,code){
@@ -1049,7 +1062,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     }
     if(missing.length){ showErr('Schirm oder Klasse fehlt bei: '+missing.join(', ')); return; }
     $('#dbSave').disabled=true; showErr(''); busy('Speichere '+neu.length+(neu.length===1?' Flug':' Flüge')+' in der Datenbank …',null);
-    try{ const r=await dbInsert(neu,code); markUnsaved(); if(r.ok) busy('Gespeichert. Berechne alles neu …',0.2); showErr((r.ok?r.ok+' gespeichert. ':'')+(bad.length?bad.length+' ungültig, nicht gespeichert. ':'')+(r.dup?r.dup+' waren schon drin. ':'')+(r.err.length?'Fehler: '+r.err.join(', '):'')); setDb('verbunden, '+state.flights.filter(f=>f.inDb).length+' Flüge'); renderPrep(); if(r.ok){ const msg=$('#err').textContent; await recalcAndSave(code); showErr(msg+' '+$('#err').textContent); } else refresh(); }
+    try{ const r=await dbInsert(neu,code); markUnsaved(); if(r.ok) busy('Gespeichert. Berechne alles neu …',0.2); showErr((r.ok?r.ok+' gespeichert. ':'')+(bad.length?bad.length+' ungültig, nicht gespeichert. ':'')+(r.dup?r.dup+' waren schon drin. ':'')+(r.err.length?'Fehler: '+r.err.join(', '):'')); setDb('verbunden, '+state.flights.filter(f=>f.inDb).length+' Flüge'); renderPrep(); if(r.ok){ const msg=$('#err').textContent; const done=await recalcAndSave(code); if(done) showErr(msg+' '+$('#err').textContent); } else refresh(); }
     catch(e){ showErr('Speichern fehlgeschlagen: '+e.message); }
     busyDone(/Fehler|fehlgeschlagen/.test($('#err').textContent)?'':$('#err').textContent.trim()); if(!$('#busy').hidden) showErr('');
     $('#dbSave').disabled=false;
@@ -1074,7 +1087,7 @@ svg.leaflet-zoom-animated{will-change:transform}
   function packResult(){
     const r=state.result; if(!r) return null;
     const ev=r.events.map(e=>{ const o={...e}; o.k=fkey(e.f); delete o.f; delete o.geom; delete o.incGeom; return o; });
-    return {sig:inputSig(),terr:r.terr,snaps:r.snaps,events:ev,fl:r.fl.map(fkey),gliderOfPilot,classOfPilot,temps,places};
+    return {sig:r.sig||inputSig(),terr:r.terr,snaps:r.snaps,events:ev,fl:r.fl.map(fkey),gliderOfPilot,classOfPilot,temps,places};
   }
   function extendSnaps(snaps){
     if(!snaps.length) return snaps;
@@ -1088,7 +1101,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     const byKey={}; state.flights.forEach(f=>byKey[fkey(f)]=f);
     Object.assign(gliderOfPilot,data.gliderOfPilot||{}); Object.assign(classOfPilot,data.classOfPilot||{}); if(data.temps) for(const k in data.temps){ if(temps[k]==null&&data.temps[k]!=null) temps[k]=data.temps[k]; } if(data.places) for(const k in data.places){ if(!(k in places)&&data.places[k]) places[k]=data.places[k]; }
     const events=data.events.map(o=>{ const e={...o,f:byKey[o.k]}; delete e.k; return e; }).filter(e=>e.f);
-    state.result={terr:data.terr,snaps:extendSnaps(data.snaps),events,fl:data.fl.map(k=>byKey[k]).filter(Boolean)};
+    state.result={terr:data.terr,snaps:extendSnaps(data.snaps),events,fl:data.fl.map(k=>byKey[k]).filter(Boolean),sig:data.sig};
   }
   async function loadResult(){
     const r=await fetch(cfg.supabaseUrl+'/rest/v1/results?select=data&order=id.desc&limit=1',{headers:dbHeaders()});
@@ -1102,13 +1115,21 @@ svg.leaflet-zoom-animated{will-change:transform}
   }
   async function recalcAndSave(code){
     state.excludeHidden=false; $('#exclHidden').checked=false;
-    await refresh();
+    const done=await refresh(); if(!done) return false;
     if(code){ if(busyOn) busy('Speichere Ergebnis für alle Besucher …',null); const ok=await saveResult(code); showErr(ok?'Ergebnis gespeichert, Besucher sehen es ab jetzt sofort.':'Ergebnis konnte nicht gespeichert werden (Club-Code prüfen, SQL-Update ausgeführt?).'); }
+    return true;
   }
+  let recalcT=null, recalcMsgs=[];
+  function scheduleRecalc(code,msg){
+    recalcMsgs.push(msg); clearTimeout(recalcT);
+    busy(recalcMsgs.length+(recalcMsgs.length===1?' Änderung':' Änderungen')+' gespeichert. Neuberechnung startet in 3 Sekunden, weitere Änderungen werden gesammelt …',0.05);
+    recalcT=setTimeout(async()=>{ const msgs=recalcMsgs; recalcMsgs=[]; busy('Berechne alles neu …',0.1); const done=await recalcAndSave(code); if(done){ const m=$('#err').textContent; busyDone(msgs.join(' ')+' Alles neu gerechnet'+(/gespeichert,/.test(m)?' und für alle gespeichert.':'.')); if(!/nicht/.test(m)) showErr(''); } },3000);
+  }
+  function dropFromResult(list){ const r=state.result; if(!r) return; const ks=new Set(list.map(fkey)); r.events=r.events.filter(e=>!ks.has(fkey(e.f))); render(); }
   $('#recalcBtn').addEventListener('click',async()=>{
     const code=$('#clubCode').value.trim(); if(!code){ showErr('Für "Neu berechnen" den Club-Code eingeben.'); return; }
     try{ localStorage.setItem('xc-club-code',code); }catch(e){}
-    $('#recalcBtn').disabled=true; busy('Berechne alles neu …',0.1); await recalcAndSave(code); const m=$('#err').textContent; if(/nicht/.test(m)) busyDone(''); else { busyDone(m); showErr(''); } $('#recalcBtn').disabled=false;
+    $('#recalcBtn').disabled=true; busy('Berechne alles neu …',0.1); const done=await recalcAndSave(code); if(!done){ $('#recalcBtn').disabled=false; return; } const m=$('#err').textContent; if(/nicht/.test(m)) busyDone(''); else { busyDone(m); showErr(''); } $('#recalcBtn').disabled=false;
   });
 
   async function start(){
