@@ -8,7 +8,7 @@
 <style>
 :root{
   --bg:#EEF1EC; --panel:#FFFFFF; --ink:#1B2430; --ink-2:#556270; --line:#D6DBD3;
-  --accent:#2C6BB0; --accent-ink:#FFFFFF; --map:#E4E8DF; --tilefilter:none;
+  --accent:#2C6BB0; --accent-ink:#FFFFFF; --map:#E4E8DF; --tilefilter:none; --topofilter:none; --hillfilter:none;
   --p0:#1D9E75; --p1:#D85A30; --p2:#6E63D6; --p3:#BA7517; --p4:#D4537E; --p5:#378ADD;
   --font-display:"Barlow Condensed","Arial Narrow",sans-serif;
   --font-body:"Source Sans 3","Segoe UI",sans-serif;
@@ -18,14 +18,14 @@
   :root:not([data-theme="light"]){
     color-scheme:dark;
     --bg:#151A1F; --panel:#1E252C; --ink:#E7ECEF; --ink-2:#98A4AE; --line:#2F3941;
-    --accent:#5A9BE6; --accent-ink:#0E1419; --map:#1A2026; --tilefilter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9);
+    --accent:#5A9BE6; --accent-ink:#0E1419; --map:#1A2026; --tilefilter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); --topofilter:brightness(.62) saturate(.8); --hillfilter:invert(1) brightness(.55) contrast(1.2);
     --p0:#3FC29A; --p1:#F07A53; --p2:#9C93F2; --p3:#E6A03B; --p4:#F07AA0; --p5:#6FB0F0;
   }
 }
 :root[data-theme="dark"]{
   color-scheme:dark;
   --bg:#151A1F; --panel:#1E252C; --ink:#E7ECEF; --ink-2:#98A4AE; --line:#2F3941;
-  --accent:#5A9BE6; --accent-ink:#0E1419; --map:#1A2026; --tilefilter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9);
+  --accent:#5A9BE6; --accent-ink:#0E1419; --map:#1A2026; --tilefilter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); --topofilter:brightness(.62) saturate(.8); --hillfilter:invert(1) brightness(.55) contrast(1.2);
   --p0:#3FC29A; --p1:#F07A53; --p2:#9C93F2; --p3:#E6A03B; --p4:#F07AA0; --p5:#6FB0F0;
 }
 *{box-sizing:border-box}
@@ -175,6 +175,8 @@ tr[data-p]{cursor:default}
 .leaflet-tile{user-select:none;-webkit-user-drag:none;visibility:hidden;filter:inherit}
 .leaflet-tile-loaded{visibility:inherit}
 .osm-tiles{filter:var(--tilefilter)}
+.topo-tiles,.esritopo-tiles{filter:var(--topofilter)}
+.hill-tiles{filter:var(--hillfilter)}
 .leaflet-control-layers{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.3);font-size:13px}
 .leaflet-control-layers-toggle{width:36px;height:36px;display:block;background:var(--panel);position:relative}
 .leaflet-control-layers-toggle::after{content:'\25A6';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--ink)}
@@ -213,7 +215,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v52 (28.09. 11:48)</span>
+  <span class="lbl" id="version">v53 (28.09. 12:54)</span>
 </header>
 
 <div class="wrap">
@@ -661,10 +663,17 @@ svg.leaflet-zoom-animated{will-change:transform}
     const topo=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:16,subdomains:'abc',attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>, SRTM | &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'});
     tiles.on('tileerror',()=>{ if(!tilesFailed){tilesFailed=true;$('#maptip').hidden=false;} });
     tiles.on('tileload',()=>{ tilesFailed=false; $('#maptip').hidden=true; });
+    topo.options.className='topo-tiles';
+    const dark=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd',attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'});
+    const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:18,attribution:'Tiles &copy; Esri, Maxar, Earthstar Geographics'});
+    const esriTopo=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:18,className:'esritopo-tiles',attribution:'Tiles &copy; Esri, USGS, NOAA, and the GIS User Community'});
+    const hill=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',{maxZoom:16,className:'hill-tiles',attribution:'Relief &copy; Esri'});
+    const bases={'Straßenkarte':tiles,'Gelände (OpenTopoMap)':topo,'Gelände (Esri Topo)':esriTopo,'Relief dunkel':hill,'Dunkel (CARTO)':dark,'Satellit (Esri)':sat};
+    const keys={osm:tiles,topo:topo,esritopo:esriTopo,hill:hill,dark:dark,sat:sat};
     let pref='osm'; try{ pref=localStorage.getItem('xc-basemap')||'osm'; }catch(e){}
-    (pref==='topo'?topo:tiles).addTo(map);
-    L.control.layers({'Straßenkarte':tiles,'Gelände (OpenTopoMap)':topo},null,{position:'topright'}).addTo(map);
-    map.on('baselayerchange',e=>{ try{ localStorage.setItem('xc-basemap',e.layer===topo?'topo':'osm'); }catch(x){} });
+    (keys[pref]||tiles).addTo(map);
+    L.control.layers(bases,null,{position:'topright'}).addTo(map);
+    map.on('baselayerchange',e=>{ const k=Object.keys(keys).find(k=>keys[k]===e.layer)||'osm'; try{ localStorage.setItem('xc-basemap',k); }catch(x){} });
     map.createPane('tracks'); map.getPane('tracks').style.zIndex=350; map.getPane('tracks').style.pointerEvents='none';
     overlay=L.layerGroup().addTo(map);
   }
