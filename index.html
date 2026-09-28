@@ -172,7 +172,19 @@ tr:last-child td{border-bottom:0}
   .mnav button b{font-size:21px;line-height:1.2;filter:grayscale(1);opacity:.75}
   .mnav button[aria-current=true]{color:var(--accent)}
   .mnav button[aria-current=true] b{filter:none;opacity:1}
-  #scoreRows td,#bilanzRows td{padding:12px 10px;font-size:16px}
+  html,body{overflow-x:hidden;max-width:100vw}
+  .wrap .panel{max-width:100vw;overflow:hidden}
+  #scoreRows td{padding:12px 10px;font-size:16px}
+  #bilanzTable{table-layout:fixed;width:100%}
+  #bilanzTable th,#bilanzTable td{padding:9px 5px;font-size:13px}
+  #bilanzTable th{font-size:10px;letter-spacing:.03em;white-space:normal}
+  #bilanzTable th:first-child,#bilanzTable td:first-child{width:34%}
+  #bilanzTable th:nth-child(4),#bilanzTable td:nth-child(4){display:none}
+  #bilanzRows td:first-child{font-size:14px;overflow-wrap:anywhere}
+  #bilanzRows td .pilot{white-space:normal}
+  #bilanzRows .unit{font-size:10px}
+  .bcalc td{font-size:12px;padding:2px 3px}
+  .stichtag{padding:8px 12px}
   .tabs button{font-size:15px;padding:12px 2px}
   .flights thead{display:none}
   .flights,.flights tbody{display:block}
@@ -289,7 +301,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v71 (28.09. 18:38)</span>
+  <span class="lbl" id="version">v72 (28.09. 18:57)</span>
   <button type="button" class="mgear" id="mGear" aria-label="Hochladen und Einstellungen">⚙</button>
 </header>
 <nav class="mnav" id="mNav"><button type="button" data-v="map" aria-current="true"><b>🗺</b>Karte</button><button type="button" data-v="score"><b>🏆</b>Rangliste</button><button type="button" data-v="fl"><b>✈</b>Flüge</button><button type="button" data-v="rules"><b>📖</b>Regeln</button></nav>
@@ -810,7 +822,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     return `<tr class="bdetail"><td colspan="3">${inner}</td></tr>`;
   }
 
-  const MQ=matchMedia('(max-width:820px)');
+  const MQ=matchMedia('(max-width:820px)'); const NOHOVER=matchMedia('(hover: none)');
   function placeBusy(){ const b=$('#busy'); if(MQ.matches){ if(b.parentNode!==document.body) $('header').after(b); } else if(b.parentNode===document.body){ $('#err').before(b); } }
   function setView(v){
     state.mview=v; ['up','map','fl','score','rules'].forEach(k=>document.body.classList.toggle('mv-'+k,k===v));
@@ -885,7 +897,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     const hn=$('#hoverName');
     if(state.hl&&state.result&&state.result.terr[state.hl]){ hn.innerHTML=`<span class="sw" style="background:${colorOf(state.hl)}"></span>${esc(state.hl)} <small>${fmt(areaKm2(state.result.terr[state.hl]),2)} km² gehalten</small>`; hn.hidden=false; } else hn.hidden=true;
 
-    document.querySelectorAll('tr[data-p]').forEach(tr=>tr.classList.toggle('hl',!!state.hl&&tr.dataset.p===state.hl));
+    document.querySelectorAll('tr[data-p]').forEach(tr=>tr.classList.toggle('hl',!NOHOVER.matches&&!!state.hl&&tr.dataset.p===state.hl));
     document.querySelectorAll('.legend button[data-p]').forEach(b=>b.classList.toggle('hl',!!state.hl&&b.dataset.p===state.hl));
     const each=(g,fn)=>g.eachLayer(l=>l.eachLayer?each(l,fn):fn(l));
     for(const q in terrLayers){ each(terrLayers[q],l=>{ if(!l._path) return; l._path.classList.toggle('dim',!!state.hl&&q!==state.hl); l._path.classList.toggle('hot',!!state.hl&&q===state.hl); }); }
@@ -1007,7 +1019,6 @@ svg.leaflet-zoom-animated{will-change:transform}
   });
   $('#scoreRows').addEventListener('click',e=>{ const tr=e.target.closest('tr[data-p]'); if(!tr||state.tab==='held') return; state.sopen=state.sopen===tr.dataset.p?null:tr.dataset.p; render(); });
   $('#bilanzRows').addEventListener('click',e=>{ const tr=e.target.closest('tr[data-p]'); if(!tr) return; state.bopen=state.bopen===tr.dataset.p?null:tr.dataset.p; render(); });
-  const NOHOVER=matchMedia('(hover: none)');
   document.addEventListener('mouseover',e=>{ if(NOHOVER.matches) return; const tr=e.target.closest('tr[data-p]'); if(tr) setHL(tr.dataset.p); const b=e.target.closest('.legend button[data-p]'); if(b) setHL(b.dataset.p); });
   document.addEventListener('mouseout',e=>{ if(NOHOVER.matches) return; if(e.target.closest('tr[data-p],.legend button[data-p]')) setHL(null); });
   document.querySelectorAll('#bilanzTable th[data-bk]').forEach(th=>{th.style.cursor='pointer';th.addEventListener('click',()=>{const k=th.dataset.bk; if(state.bsort.key===k) state.bsort.dir*=-1; else state.bsort={key:k,dir:k==='p'?1:-1}; render();});});
