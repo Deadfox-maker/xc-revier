@@ -158,7 +158,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v40 (28.09. 08:35)</span>
+  <span class="lbl" id="version">v41 (28.09. 08:40)</span>
 </header>
 
 <div class="wrap">
@@ -504,7 +504,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     state.hl=p||state.pinned||null;
     const hn=$('#hoverName');
     if(state.hl&&state.result&&state.result.terr[state.hl]){ hn.innerHTML=`<span class="sw" style="background:${colorOf(state.hl)}"></span>${esc(state.hl)} <small>${fmt(areaKm2(state.result.terr[state.hl]),2)} km² gehalten</small>`; hn.hidden=false; } else hn.hidden=true;
-    if(fromMap&&state.hl){ const row=[...document.querySelectorAll('#scoreRows tr[data-p],#bilanzRows tr[data-p]')].find(tr=>tr.dataset.p===state.hl&&tr.offsetParent); if(row){ const r=row.getBoundingClientRect(); if(r.top<0||r.bottom>innerHeight) row.scrollIntoView({block:'center',behavior:'smooth'}); } }
+
     document.querySelectorAll('tr[data-p]').forEach(tr=>tr.classList.toggle('hl',!!state.hl&&tr.dataset.p===state.hl));
     document.querySelectorAll('.legend button[data-p]').forEach(b=>b.classList.toggle('hl',!!state.hl&&b.dataset.p===state.hl));
     for(const q in terrLayers){ terrLayers[q].eachLayer(l=>{ if(!l._path) return; l._path.classList.toggle('dim',!!state.hl&&q!==state.hl); l._path.classList.toggle('hot',!!state.hl&&q===state.hl); }); }
