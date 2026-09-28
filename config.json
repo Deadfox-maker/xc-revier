@@ -3,9 +3,10 @@
   "supabaseKey": "sb_publishable_26BRNM9WBKw8FZICjtCOpA_YwXkZoMB",
   "classFactor": {
     "A": 1.0,
-    "B": 0.9,
-    "C": 0.7,
-    "D": 0.5,
-    "?": 0.5
+    "B": 0.8,
+    "C": 0.6,
+    "D": 0.4,
+    "CCC": 0.2,
+    "?": 0.05
   }
 }

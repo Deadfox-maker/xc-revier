@@ -1,28 +1,37 @@
 {
- "_hinweis": "Hersteller → EN-Klasse → Modelle. Erkennung: Hersteller und Modell werden im Schirmtyp der IGC gesucht (Groß/Klein egal). Eigene Zeilen einfach ergänzen.",
+ "_hinweis": "Hersteller → EN-Klasse (A, B, C, D, CCC) → Modelle. Erkennung: Hersteller und Modell werden im Schirmtyp der IGC gesucht (Groß/Klein egal). Eigene Zeilen einfach ergänzen.",
  "Advance": {
   "A": [
+   "Alpha",
    "Alpha 7",
-   "Alpha 8"
+   "Alpha 8",
+   "Alpha DLS"
   ],
   "B": [
-   "Epsilon 9",
+   "Epsilon",
    "Epsilon 10",
+   "Epsilon 9",
+   "Epsilon DLS",
+   "Iota",
    "Iota 2",
    "Iota 3",
+   "Iota DLS",
    "Tau",
    "Theta"
   ],
   "C": [
+   "Sigma",
    "Sigma 11",
    "Sigma 12",
-   "Sigma 12 SV"
+   "Sigma 12 SV",
+   "Sigma DLS"
   ],
   "D": [
    "Omega XAlps 3",
    "Omega XAlps 4",
    "Omega X-Alps"
-  ]
+  ],
+  "CCC": []
  },
  "AirDesign": {
   "A": [
@@ -45,7 +54,8 @@
    "Hero 2",
    "Hero 3",
    "Hero 4"
-  ]
+  ],
+  "CCC": []
  },
  "BGD": {
   "A": [
@@ -71,7 +81,8 @@
   "D": [
    "Diva",
    "Diva 2"
-  ]
+  ],
+  "CCC": []
  },
  "Gin": {
   "A": [
@@ -97,8 +108,13 @@
   ],
   "D": [
    "Leopard",
-   "Leopard 2",
-   "Boomerang"
+   "Leopard 2"
+  ],
+  "CCC": [
+   "Boomerang",
+   "Boomerang 11",
+   "Boomerang 12",
+   "Boomerang GTO"
   ]
  },
  "Icaro": {
@@ -117,7 +133,8 @@
    "Maverick 2",
    "Maverick 3"
   ],
-  "D": []
+  "D": [],
+  "CCC": []
  },
  "Independence": {
   "A": [
@@ -131,7 +148,8 @@
   "C": [
    "Rasta"
   ],
-  "D": []
+  "D": [],
+  "CCC": []
  },
  "Mac Para": {
   "A": [
@@ -151,7 +169,8 @@
   "D": [
    "Magus",
    "Magus 2"
-  ]
+  ],
+  "CCC": []
  },
  "Niviuk": {
   "A": [
@@ -181,6 +200,10 @@
    "Klimber 2",
    "Klimber 2 P",
    "Icepeak"
+  ],
+  "CCC": [
+   "Icepeak X-One",
+   "Icepeak Evox"
   ]
  },
  "Nova": {
@@ -210,7 +233,8 @@
   "D": [
    "Xenon",
    "Xenon 2"
-  ]
+  ],
+  "CCC": []
  },
  "Ozone": {
   "A": [
@@ -246,9 +270,11 @@
    "Zeolite 2",
    "Zeolite GT",
    "Zeolite 2 GT",
-   "Enzo 3",
-   "Enzo 4",
    "Photon Light"
+  ],
+  "CCC": [
+   "Enzo 3",
+   "Enzo 4"
   ]
  },
  "Phi": {
@@ -278,7 +304,8 @@
   "D": [
    "Scala",
    "Scala 2"
-  ]
+  ],
+  "CCC": []
  },
  "Skywalk": {
   "A": [
@@ -313,7 +340,8 @@
    "Poison XAlps",
    "Poison X-Alps 3",
    "X-Alps 5"
-  ]
+  ],
+  "CCC": []
  },
  "Supair": {
   "A": [
@@ -339,7 +367,8 @@
   "D": [
    "Wild",
    "Wild 2"
-  ]
+  ],
+  "CCC": []
  },
  "Swing": {
   "A": [
@@ -364,7 +393,8 @@
    "Core 2",
    "Core 3",
    "Core 4"
-  ]
+  ],
+  "CCC": []
  },
  "Triple Seven": {
   "A": [
@@ -387,7 +417,8 @@
    "King",
    "King 2",
    "Gambit"
-  ]
+  ],
+  "CCC": []
  },
  "UP": {
   "A": [
@@ -414,7 +445,8 @@
    "Meru",
    "Meru 2",
    "Meru 3"
-  ]
+  ],
+  "CCC": []
  },
  "Flow": {
   "A": [
@@ -429,13 +461,15 @@
   ],
   "C": [
    "Spectra",
-   "Spectra 2",
-   "XCRacer",
-   "XCRacer 2"
+   "Spectra 2"
   ],
   "D": [
    "Mullet",
    "Mullet 2"
+  ],
+  "CCC": [
+   "XCRacer",
+   "XCRacer 2"
   ]
  },
  "Dudek": {
@@ -451,7 +485,8 @@
   "C": [
    "Hadron 3 XX"
   ],
-  "D": []
+  "D": [],
+  "CCC": []
  },
  "Sky Paragliders": {
   "A": [
@@ -474,7 +509,8 @@
   "D": [
    "Gaia",
    "Gaia 2"
-  ]
+  ],
+  "CCC": []
  },
  "Little Cloud": {
   "A": [],
@@ -487,6 +523,7 @@
   ],
   "D": [
    "Urubu King"
-  ]
+  ],
+  "CCC": []
  }
 }
