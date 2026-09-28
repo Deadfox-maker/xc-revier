@@ -148,7 +148,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v37 (28.09. 07:23)</span>
+  <span class="lbl" id="version">v38 (28.09. 07:30)</span>
 </header>
 
 <div class="wrap">
@@ -291,20 +291,22 @@ svg.leaflet-zoom-animated{will-change:transform}
     return g;
   }
 
+  function simp(g){ if(!g) return g; try{ return turf.simplify(g,{tolerance:0.00005,highQuality:false,mutate:false}); }catch(e){ return g; } }
   function flightGeometry(f,corrKm){
+    if(f._fg&&f._fgC===corrKm) return f._fg;
     let line=turf.simplify(turf.lineString(f.coords),{tolerance:0.0003,highQuality:false});
     const pts=line.geometry.coordinates;
     const len=turf.length(line,{units:'kilometers'});
     const closing=turf.distance(pts[0],pts[pts.length-1],{units:'kilometers'});
     const closed=pts.length>3&&(closing<=3||closing<=0.2*len);
     const coords=closed?pts.concat([pts[0]]):pts;
-    const corridor=turf.buffer(turf.lineString(coords),corrKm,{units:'kilometers'});
+    const corridor=turf.buffer(turf.lineString(coords),corrKm,{units:'kilometers',steps:4});
     const corrArea=turf.area(corridor);
     const geom=dropHoles(JSON.parse(JSON.stringify(corridor)));
     const fillArea=turf.area(geom);
     let shape='Linie';
     if(fillArea>corrArea*1.05) shape=closed?'Dreieck/Schleife':'Schleife im Track';
-    return {geom,shape,len,closing,closed};
+    f._fgC=corrKm; return f._fg={geom:simp(geom),shape,len,closing,closed};
   }
 
   const areaKm2=g=>g?turf.area(g)/1e6:0;
@@ -354,11 +356,18 @@ svg.leaflet-zoom-animated{will-change:transform}
   const classOfPilot={};
   function classOf(p){ return classOfPilot[p]||gliderClass(gliderOfPilot[p]||''); }
   function classFactor(p){ const c=classOf(p)||'?'; const t={...CLASS_F_DEFAULT,...((cfg&&cfg.classFactor)||{})}; return t[c]!=null?+t[c]:t['?']; }
+  function othersUnions(map,keys){
+    const n=keys.length, pre=new Array(n+1).fill(null), suf=new Array(n+1).fill(null), out={};
+    for(let i=0;i<n;i++) pre[i+1]=unionAll([pre[i],map[keys[i]]]);
+    for(let i=n-1;i>=0;i--) suf[i]=unionAll([suf[i+1],map[keys[i]]]);
+    for(let i=0;i<n;i++) out[keys[i]]=unionAll([pre[i],suf[i+1]]);
+    return out;
+  }
   function unionAll(list){ let u=null; for(const g of list){ if(!g) continue; try{ u=u?(turf.union(u,g)||u):g; }catch(e){} } return u; }
   function safeDiff(a,b){ if(!a) return null; if(!b) return a; try{ return turf.difference(a,b); }catch(e){ return a; } }
   function safeInter(a,b){ if(!a||!b) return null; try{ return turf.intersect(a,b); }catch(e){ return null; } }
   const addDays=(ds,n)=>{const d=new Date(ds+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
-  function compute(){
+  async function compute(tok){
     const corrKm=state.corridor/1000;
     const invalid=state.flights.filter(f=>validate(f));
     const fl=state.flights.filter(f=>!validate(f)&&!(state.excludeHidden&&state.hidden.has(f.pilot))).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
@@ -369,8 +378,10 @@ svg.leaflet-zoom-animated{will-change:transform}
     const end=todayStr()>days[days.length-1]?todayStr():days[days.length-1];
     let d=new Date(days[0]+'T00:00:00Z'); const endD=new Date(end+'T00:00:00Z');
     const dayUnions=[]; const mineEver={}; const exclHist=[]; let last=null; let flightDays=0;
+    const nDays=Math.round((endD-d)/864e5)+1; let di=0;
     while(d<=endD){
       const ds=d.toISOString().slice(0,10);
+      if((byDay[ds]||[]).length>=FLIGHTDAY_MIN){ $('#areaLbl').textContent='Berechne '+ds.split('-').reverse().join('.')+' ('+(++di)+') …'; await new Promise(r=>setTimeout(r,0)); if(tok!==calcTok) return false; }
       const todays=(byDay[ds]||[]).map(f=>({f,fg:flightGeometry(f,corrKm)}));
       const isFlightDay=todays.length>=FLIGHTDAY_MIN;
       if(isFlightDay){
@@ -380,6 +391,7 @@ svg.leaflet-zoom-animated{will-change:transform}
         const mineOf={}; for(const p in byPilot) mineOf[p]=unionAll(byPilot[p]);
         const recent=unionAll(dayUnions.slice(-NEULAND_DAYS).map(x=>x.geom));
         const bonus={}; const soFar={}; const dayEvents=[];
+        const beforeKeys=Object.keys(before).filter(q=>before[q]); const othersBeforeOf=othersUnions(before,beforeKeys); const allBefore=unionAll(beforeKeys.map(q=>before[q]));
         for(const {f,fg} of todays){
           const p=f.pilot, cf=classFactor(p);
           const prev=soFar[p]||null;
@@ -394,7 +406,7 @@ svg.leaflet-zoom-animated{will-change:transform}
           for(const q in before){ if(q===p||!before[q]) continue; const tq=areaKm2(before[q]); if(tq<0.01) continue;
             const taken=areaKm2(safeInter(before[q],incGeom));
             if(taken>=TAKE_PCT*tq){ qualifies=true; takeTxt.push(esc(q)+' '+Math.round(taken/tq*100)+'%'); } }
-          const othersBefore=unionAll(Object.keys(before).filter(q=>q!==p).map(q=>before[q]));
+          const othersBefore=beforeKeys.includes(p)?othersBeforeOf[p]:allBefore;
           const captured=areaKm2(safeInter(othersBefore,incGeom));
           if(qualifies){ b+=captured*TAKE_BONUS; txt.push('Übernahme '+fmt(captured,2)+' km² × 20 % = '+fmt(captured*TAKE_BONUS,2)+' (genommen von '+takeTxt.join(', ')+')'); }
           bonus[p]=(bonus[p]||0)+b;
@@ -404,14 +416,16 @@ svg.leaflet-zoom-animated{will-change:transform}
         }
         for(const q of Object.keys(terr)) terr[q]=safeDiff(terr[q],dayUnion);
         for(const p in mineOf) terr[p]=terr[p]?(unionAll([terr[p],mineOf[p]])||mineOf[p]):mineOf[p];
+        for(const q in terr) terr[q]=simp(terr[q]);
         dayUnions.push({date:ds,geom:dayUnion}); while(dayUnions.length>NEULAND_DAYS+1) dayUnions.shift();
         for(const p in mineOf) mineEver[p]=unionAll([mineEver[p],mineOf[p]]);
         const areas={}, base={}, exclA={}, longA={}, exclG={};
         const pilots=Object.keys(terr).filter(p=>terr[p]);
         const oldRef=exclHist[exclHist.length-HOLD_DAYS]||{};
+        const othersOf=othersUnions(terr,pilots);
         for(const p of pilots){
           const total=areaKm2(terr[p]);
-          const others=unionAll(pilots.filter(q=>q!==p).map(q=>terr[q]));
+          const others=othersOf[p];
           const eg=safeDiff(terr[p],others); exclG[p]=eg;
           const excl=areaKm2(eg);
           const lg=oldRef[p]?areaKm2(safeInter(eg,oldRef[p])):0;
@@ -523,7 +537,8 @@ svg.leaflet-zoom-animated{will-change:transform}
     $('#areaLbl').textContent=r&&r.fl.length?`${fmt(total,2)} km² vergeben · ${fd} Flugtage${rd?', '+rd+' Ruhetage mit Flügen':''}`:'';
   }
 
-  function refresh(){ showErr(''); try{ compute(); }catch(e){ showErr('Berechnung fehlgeschlagen: '+e.message); } render(); }
+  let calcTok=0;
+  async function refresh(){ showErr(''); const tok=++calcTok; try{ const ok=await compute(tok); if(ok===false) return; }catch(e){ showErr('Berechnung fehlgeschlagen: '+e.message); } if(tok===calcTok) render(); }
   function showErr(m){ const el=$('#err'); el.textContent=m; el.hidden=!m; }
 
   function loadSample(){ state.flights=SAMPLE.map(f=>({...f,coords:f.coords.map(c=>c.slice())})); $('#hint').hidden=false; refresh(); }
