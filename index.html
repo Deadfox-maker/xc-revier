@@ -132,6 +132,7 @@ tr:last-child td{border-bottom:0}
 #bilanzRows tr[data-p],#scoreRows tr[data-p]{cursor:pointer}
 .bcalc th{padding:2px 6px;font-size:11px;color:var(--ink-2);text-align:left;border-bottom:1px solid var(--line)}
 .bcalc tfoot td{border-bottom:0}
+.dk{display:inline-block;width:20px;font-size:12px}
 .bcalc tr.gap td{color:var(--ink-2);font-size:11px;font-style:italic;background:color-mix(in srgb,var(--line) 40%,transparent)}
 .bdetail>td{padding:4px 8px 10px}
 .bcalc{width:100%;font-size:13px}
@@ -215,7 +216,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v54 (28.09. 12:59)</span>
+  <span class="lbl" id="version">v55 (28.09. 13:01)</span>
 </header>
 
 <div class="wrap">
@@ -611,10 +612,11 @@ svg.leaflet-zoom-animated{will-change:transform}
       inner=(s&&s.flightDay)?bilCalc(snapRow(s,p)):`<div class="unit">${fmtD(sd)} ist kein Flugtag, keine Punkte.</div>`;
     } else {
       const inRange=ds=>state.tab==='month'?(ds.slice(0,7)===sd.slice(0,7)&&ds<=sd):(ds.slice(0,4)===sd.slice(0,4)&&ds<=sd);
-      const rows=r.snaps.filter(s=>s.flightDay&&inRange(s.date)&&((s.score[p]||0)>0.005||(s.areas[p]||0)>0.005)).map(s=>snapRow(s,p));
+      const rows=r.snaps.filter(s=>s.flightDay&&inRange(s.date)&&((s.score[p]||0)>0.005||(s.areas[p]||0)>0.005)).map(s=>Object.assign(snapRow(s,p),{n:r.events.filter(e=>e.f.pilot===p&&e.f.date===s.date&&!e.invalid).length}));
+      const nFlew=rows.filter(x=>x.n>0).length;
       const gap=(a,b)=>Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))/864e5)-1;
       const T=k=>rows.reduce((a,x)=>a+x[k],0); const hasPen=rows.some(x=>x.pn>0.005);
-      inner=rows.length?`<table class="bcalc"><thead><tr><th>Flugtag</th><th class="num">km²</th><th class="num">Grund</th><th class="num">Bonus</th>${hasPen?'<th class="num">Abzug</th>':''}<th class="num">Punkte</th></tr></thead><tbody>`+rows.map((x,i)=>`${i>0&&gap(rows[i-1].d,x.d)>0?`<tr class="gap"><td colspan="${hasPen?6:5}">${gap(rows[i-1].d,x.d)} Tage ohne Flugtag dazwischen, keine Punkte</td></tr>`:''}<tr><td>${fmtD(x.d||'')}</td><td class="num">${fmt(x.t,1)}</td><td class="num">${fmt(x.bs,2)}${x.dc<1?`<br><span class="unit">Pause ×${fmt(x.dc,2)}</span>`:''}${x.aw<0.999?`<br><span class="unit">Alter ×${fmt(x.aw,2)}</span>`:''}</td><td class="num" style="color:var(--accent)">${x.b>0.005?'+'+fmt(x.b,2):''}</td>${hasPen?`<td class="num" style="color:#E24B4A">${x.pn>0.005?'−'+fmt(x.pn,2):''}</td>`:''}<td class="num"><strong>${fmt(x.s,2)}</strong></td></tr>`).join('')+`</tbody><tfoot><tr><td><strong>${rows.length} Flugtage</strong></td><td></td><td class="num"><strong>${fmt(T('bs'),2)}</strong></td><td class="num" style="color:var(--accent)"><strong>+${fmt(T('b'),2)}</strong></td>${hasPen?`<td class="num" style="color:#E24B4A"><strong>−${fmt(T('pn'),2)}</strong></td>`:''}<td class="num"><strong>${fmt(T('s'),2)}</strong></td></tr></tfoot></table><div class="unit" style="margin-top:4px">Punkte gibt es nur an Flugtagen (mind. 5 Flüge hochgeladen). km² = an dem Tag gehaltene Fläche, Grund = allein × 1,2, geteilt × 1, nach Alter und Pause gewichtet. Details zu einem Tag: Tab "Tag" und Stand auf den Tag setzen.</div>`:`<div class="unit">Keine Punkte im Zeitraum.</div>`;
+      inner=rows.length?`<table class="bcalc"><thead><tr><th>Flugtag</th><th class="num">km²</th><th class="num">Grund</th><th class="num">Bonus</th>${hasPen?'<th class="num">Abzug</th>':''}<th class="num">Punkte</th></tr></thead><tbody>`+rows.map((x,i)=>`${i>0&&gap(rows[i-1].d,x.d)>0?`<tr class="gap"><td colspan="${hasPen?6:5}">${gap(rows[i-1].d,x.d)} Tage ohne Flugtag dazwischen, keine Punkte</td></tr>`:''}<tr><td><span class="dk ${x.n>0?'fly':'hold'}" title="${x.n>0?x.n+(x.n===1?' Flug':' Flüge')+' an dem Tag':'nicht geflogen, nur gehalten'}">${x.n>0?'🪂':'🏠'}</span>${fmtD(x.d||'')}</td><td class="num">${fmt(x.t,1)}</td><td class="num">${fmt(x.bs,2)}${x.dc<1?`<br><span class="unit">Pause ×${fmt(x.dc,2)}</span>`:''}${x.aw<0.999?`<br><span class="unit">Alter ×${fmt(x.aw,2)}</span>`:''}</td><td class="num" style="color:var(--accent)">${x.b>0.005?'+'+fmt(x.b,2):''}</td>${hasPen?`<td class="num" style="color:#E24B4A">${x.pn>0.005?'−'+fmt(x.pn,2):''}</td>`:''}<td class="num"><strong>${fmt(x.s,2)}</strong></td></tr>`).join('')+`</tbody><tfoot><tr><td><strong>${rows.length} Flugtage</strong><br><span class="unit">🪂 ${nFlew} geflogen, 🏠 ${rows.length-nFlew} nur gehalten</span></td><td></td><td class="num"><strong>${fmt(T('bs'),2)}</strong></td><td class="num" style="color:var(--accent)"><strong>+${fmt(T('b'),2)}</strong></td>${hasPen?`<td class="num" style="color:#E24B4A"><strong>−${fmt(T('pn'),2)}</strong></td>`:''}<td class="num"><strong>${fmt(T('s'),2)}</strong></td></tr></tfoot></table><div class="unit" style="margin-top:4px">🪂 = du bist an dem Tag geflogen, 🏠 = nicht geflogen, Revier nur gehalten. Punkte gibt es nur an Flugtagen (mind. 5 Flüge hochgeladen). km² = an dem Tag gehaltene Fläche, Grund = allein × 1,2, geteilt × 1, nach Alter und Pause gewichtet. Details zu einem Tag: Tab "Tag" und Stand auf den Tag setzen.</div>`:`<div class="unit">Keine Punkte im Zeitraum.</div>`;
     }
     return `<tr class="bdetail"><td colspan="3">${inner}</td></tr>`;
   }
