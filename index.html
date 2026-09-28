@@ -281,7 +281,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v65 (28.09. 17:42)</span>
+  <span class="lbl" id="version">v66 (28.09. 17:45)</span>
   <button type="button" class="mgear" id="mGear" aria-label="Hochladen und Einstellungen">⚙</button>
 </header>
 <nav class="mnav" id="mNav"><button type="button" data-v="map" aria-current="true"><b>🗺</b>Karte</button><button type="button" data-v="score"><b>🏆</b>Rangliste</button><button type="button" data-v="fl"><b>✈</b>Flüge</button><button type="button" data-v="rules"><b>📖</b>Regeln</button></nav>
@@ -547,7 +547,10 @@ svg.leaflet-zoom-animated{will-change:transform}
   const placeOf=f=>{ const p=places[placeKey(f)]; return p&&p.v===2?p:null; };
   const kmBetween=(a,b)=>{ const kx=111.32*Math.cos(a[1]*Math.PI/180), dx=(a[0]-b[0])*kx, dy=(a[1]-b[1])*110.57; return Math.sqrt(dx*dx+dy*dy); };
   async function fetchPlaces(flights,tok){
-    const need=flights.filter(f=>f.coords&&f.coords.length&&!placeOf(f));
+    let need=flights.filter(f=>f.coords&&f.coords.length&&!placeOf(f));
+    // schon bekannte Startplätze in der Nähe (bis 1,5 km) direkt übernehmen, ohne neue Abfrage
+    const known=Object.keys(places).filter(k=>places[k]&&places[k].v===2&&places[k].site).map(k=>({k,c:k.split(',').reverse().map(Number)}));
+    need=need.filter(f=>{ const st=f.coords[0]; const hit=known.find(x=>kmBetween(st,x.c)<1.5); if(hit){ places[placeKey(f)]=places[hit.k]; return false; } return true; });
     if(!need.length) return;
     // 1. Startplätze aus OpenStreetMap (Overpass): eine Abfrage für alle Startpunkte, mit Zeitlimit
     const uniq={}; need.forEach(f=>{ const [lon,lat]=f.coords[0]; uniq[lat.toFixed(2)+','+lon.toFixed(2)]=[lat,lon]; });
