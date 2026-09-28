@@ -325,7 +325,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <div class="hdr-r"><select id="clubSel" class="datebtn clubsel" title="Club wählen"></select><button type="button" class="btn hbtn" id="newsBtn" title="Was ist neu">🆕 <span class="hl-txt">Was ist neu</span></button><button type="button" class="btn hbtn" id="msgBtn" title="Kontakt">✉ <span class="hl-txt">Kontakt</span><span class="badge" id="msgBadge" hidden></span></button><span class="lbl" id="version">v73 (28.09. 19:54)</span></div>
+  <div class="hdr-r"><select id="clubSel" class="datebtn clubsel" title="Club wählen"></select><button type="button" class="btn hbtn" id="newsBtn" title="Was ist neu">🆕 <span class="hl-txt">Was ist neu</span></button><button type="button" class="btn hbtn" id="msgBtn" title="Kontakt">✉ <span class="hl-txt">Kontakt</span><span class="badge" id="msgBadge" hidden></span></button><span class="lbl" id="version">v74 (28.09. 21:01)</span></div>
   <button type="button" class="mgear" id="mGear" aria-label="Hochladen und Einstellungen">⚙</button>
 </header>
 <div class="modal" id="modal" hidden><div class="modal-bg" id="modalBg"></div><div class="modal-box"><div class="modal-hd"><h2 id="modalTitle"></h2><button type="button" class="btn" id="modalClose">✕</button></div><div class="modal-body" id="modalBody"></div></div></div>
@@ -775,7 +775,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     }
     invalid.forEach(f=>events.push({f,invalid:validate(f),shape:'ungültig',area:0,inc:0,overlapOwn:0,captured:0,len:0,excl:0,shared:0,base:0,bonus:0,bonusTxt:[],dayTotal:null,flightsToday:0}));
     if(tok!==calcTok) return false;
-    state.result={terr,events,snaps,fl,sig:sig0};
+    state.result={terr,events,snaps,fl,sig:sig0,fresh:true};
   }
 
   function scores(){
@@ -883,6 +883,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     render(); loadLog(); refreshAdminUI(); }
 
   const CHANGELOG=[
+    {v:'74',d:'28.09.2026',t:['Nach dem automatischen Neurechnen wird das Ergebnis gleich gespeichert, wenn ein Code eingetragen ist','"Neu berechnen" speichert nur, wenn das Ergebnis schon aktuell ist, statt nochmal zu rechnen']},
     {v:'73',d:'28.09.2026',t:['Mehrere Clubs: Club-Auswahl oben, jeder Club mit eigenem Upload-Code, eigener Karte, Rangliste, Flügen und Protokoll','Hauptcode über alle Clubs, Clubs anlegen und Codes verwalten','Kontakt-Formular für Anfragen anderer Clubs, Nachrichten für den Hauptadmin','Dieses Änderungsverzeichnis ("Was ist neu")','Flüge-pro-Flugtag pro Club einstellbar (Standard 5)']},
     {v:'71 bis 72',d:'28.09.2026',t:['Zwei Codes: Admin und Upload; Änderungsprotokoll mit Name; Löschen nur als Markierung; Rückgängig','Bilanz am Handy angepasst, kein seitliches Verschieben mehr']},
     {v:'64 bis 70',d:'28.09.2026',t:['Handy-Ansicht mit Leiste unten (Karte, Rangliste, Flüge, Regeln), als App installierbar','Karte am Handy flüssiger, dunkle Karte als Standard','Startplatz-Name pro Flug (ParaglidingEarth, OpenStreetMap, eigene Namen)','XC-Punkte je Flug geschätzt (FAI, Dreieck, frei)','Pilot, Schirm, Klasse ändern und Flüge löschen (Admin)','Regeltext Übernahme klarer']},
@@ -945,7 +946,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     if(!state.flights.length){ state.result=null; render(); return; }
     let used=false;
     try{ const data=await loadResult(); if(data&&data.sig===inputSig()){ applyResult(data); render(); used=true; } }catch(e){}
-    if(!used){ $('#hint').textContent+=' Gespeichertes Ergebnis veraltet, wird neu gerechnet …'; busy('Rechne alle '+state.flights.length+' Flüge neu. Das dauert ein bis zwei Minuten, die Seite bleibt bedienbar …',0.05); const ok=await refresh(); if(ok) busyDone('Fertig gerechnet. Mit Code und "Neu berechnen" wird das Ergebnis für alle gespeichert, dann muss kein Besucher mehr warten.'); }
+    if(!used){ $('#hint').textContent+=' Gespeichertes Ergebnis veraltet, wird neu gerechnet …'; busy('Rechne alle '+state.flights.length+' Flüge neu. Das dauert ein bis zwei Minuten, die Seite bleibt bedienbar …',0.05); const ok=await refresh(); if(ok){ const code=$('#clubCode').value.trim(); let saved=false; if(code){ busy('Speichere Ergebnis für alle Besucher …',null); try{ saved=await saveResult(code); }catch(e){} } busyDone(saved?'Fertig gerechnet und für alle gespeichert. Besucher müssen ab jetzt nicht mehr warten.':'Fertig gerechnet. Mit Code und "Neu berechnen" wird das Ergebnis für alle gespeichert, dann muss kein Besucher mehr warten.'); } }
   }
   function scheduleRole(){ clearTimeout(roleT); roleT=setTimeout(checkRole,400); }
   const LOG_TXT={upload:'Flug hochgeladen',edit:'Flug geändert',delete:'Flug gelöscht',takeoff:'Startplatz benannt',undo:'Rückgängig gemacht'};
@@ -1328,7 +1329,9 @@ svg.leaflet-zoom-animated{will-change:transform}
   $('#recalcBtn').addEventListener('click',async()=>{
     const code=$('#clubCode').value.trim(); if(!code){ showErr('Für "Neu berechnen" den Code eingeben.'); return; }
     try{ localStorage.setItem('xc-club-code',code); }catch(e){}
-    $('#recalcBtn').disabled=true; busy('Berechne alles neu …',0.1); const done=await recalcAndSave(code); if(!done){ $('#recalcBtn').disabled=false; return; } const m=$('#err').textContent; if(/nicht/.test(m)) busyDone(''); else { busyDone(m); showErr(''); } $('#recalcBtn').disabled=false;
+    $('#recalcBtn').disabled=true;
+    if(state.result&&state.result.fresh&&state.result.sig===inputSig()){ busy('Ergebnis ist aktuell, speichere für alle Besucher …',null); const ok=await saveResult(code); busyDone(ok?'Ergebnis gespeichert, Besucher sehen es ab jetzt sofort.':''); if(!ok) showErr('Ergebnis konnte nicht gespeichert werden (Code prüfen, SQL-Update 7 ausgeführt?).'); $('#recalcBtn').disabled=false; return; }
+    busy('Berechne alles neu …',0.1); const done=await recalcAndSave(code); if(!done){ $('#recalcBtn').disabled=false; return; } const m=$('#err').textContent; if(/nicht/.test(m)) busyDone(''); else { busyDone(m); showErr(''); } $('#recalcBtn').disabled=false;
   });
 
   async function start(){
