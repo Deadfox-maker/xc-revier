@@ -221,7 +221,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v56 (28.09. 13:18)</span>
+  <span class="lbl" id="version">v57 (28.09. 13:22)</span>
 </header>
 
 <div class="wrap">
@@ -516,7 +516,9 @@ svg.leaflet-zoom-animated{will-change:transform}
         const recent=unionAll(dayUnions.slice(-NEULAND_DAYS).map(x=>x.geom));
         const bonus={}; const soFar={}; const dayEvents=[]; const loopN={}, loopPct={};
         const beforeKeys=Object.keys(before).filter(q=>before[q]); const othersBeforeOf=othersUnions(before,beforeKeys); const allBefore=unionAll(beforeKeys.map(q=>before[q]));
+        let fi=0;
         for(const {f,fg} of todays){
+          fi++; $('#areaLbl').textContent='Berechne '+ds.split('-').reverse().join('.')+' ('+di+' von '+nFD+'), Flug '+fi+' von '+todays.length+' …'; if(busyOn) busy('Berechne Flugtag '+di+' von '+nFD+' ('+ds.split('-').reverse().join('.')+'), Flug '+fi+' von '+todays.length,0.2+0.8*((di-1)+fi/todays.length/2)/nFD); await new Promise(r=>setTimeout(r,0)); if(tok!==calcTok) return false;
           const p=f.pilot, cf=classFactor(p);
           const prev=soFar[p]||null;
           const incGeom=safeDiff(fg.geom,prev);
@@ -554,7 +556,9 @@ svg.leaflet-zoom-animated{will-change:transform}
         const pilots=Object.keys(terr).filter(p=>terr[p]);
         const oldRef=exclHist[exclHist.length-HOLD_DAYS]||{};
         const othersOf=othersUnions(terr,pilots);
+        let pi=0;
         for(const p of pilots){
+          pi++; if(pi%5===0){ $('#areaLbl').textContent='Berechne '+ds.split('-').reverse().join('.')+' ('+di+' von '+nFD+'), Reviere '+pi+' von '+pilots.length+' …'; if(busyOn) busy('Berechne Flugtag '+di+' von '+nFD+', Reviere '+pi+' von '+pilots.length,0.2+0.8*((di-1)+0.5+pi/pilots.length/2)/nFD); await new Promise(r=>setTimeout(r,0)); if(tok!==calcTok) return false; }
           const total=areaKm2(terr[p]);
           const others=othersOf[p];
           const eg=safeDiff(terr[p],others); exclG[p]=eg;
@@ -978,7 +982,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     if(state.flights.length){ $('#hint').hidden=false; if(state.flights.some(f=>f.inDb)) $('#hint').textContent='Geladen aus der Datenbank: '+state.flights.length+' Flüge. Weitere IGC-Dateien laden und mit Club-Code speichern.';
       let used=false;
       if(cfg&&cfg.supabaseUrl&&state.flights.some(f=>f.inDb)){ try{ const data=await loadResult(); if(data&&data.sig===inputSig()){ applyResult(data); render(); used=true; } }catch(e){} }
-      if(!used){ if(cfg&&cfg.supabaseUrl) $('#hint').textContent+=' Gespeichertes Ergebnis veraltet, wird neu gerechnet …'; await refresh(); }
+      if(!used){ if(cfg&&cfg.supabaseUrl){ $('#hint').textContent+=' Gespeichertes Ergebnis veraltet, wird neu gerechnet …'; busy('Regeln haben sich geändert, rechne alle '+state.flights.length+' Flüge neu. Das dauert ein bis zwei Minuten, die Seite bleibt bedienbar …',0.05); } await refresh(); if(cfg&&cfg.supabaseUrl) busyDone('Fertig gerechnet. Mit Club-Code und "Neu berechnen" wird das Ergebnis für alle gespeichert, dann muss kein Besucher mehr warten.'); }
     }
     else loadSample();
   }
