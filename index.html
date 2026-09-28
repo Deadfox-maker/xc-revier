@@ -184,6 +184,8 @@ tr:last-child td{border-bottom:0}
   #flPilot{flex:1;min-width:140px}
   .flights tr.unsaved td:first-child{box-shadow:none}
   .flights tr.unsaved{box-shadow:inset 3px 0 0 var(--accent)}
+  tr[data-p].hl td{background:none;box-shadow:none}
+  .flights tr.hl{background:color-mix(in srgb,var(--accent) 14%,var(--panel))}
   .editbox{max-width:none}
   body>.busy{position:sticky;top:57px;z-index:1400;margin:0;border-radius:0;border-left:0;border-right:0}
   #upPanel .controls{flex-wrap:wrap}
@@ -279,7 +281,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v63 (28.09. 17:35)</span>
+  <span class="lbl" id="version">v64 (28.09. 17:39)</span>
   <button type="button" class="mgear" id="mGear" aria-label="Hochladen und Einstellungen">⚙</button>
 </header>
 <nav class="mnav" id="mNav"><button type="button" data-v="map" aria-current="true"><b>🗺</b>Karte</button><button type="button" data-v="score"><b>🏆</b>Rangliste</button><button type="button" data-v="fl"><b>✈</b>Flüge</button><button type="button" data-v="rules"><b>📖</b>Regeln</button></nav>
@@ -953,8 +955,9 @@ svg.leaflet-zoom-animated{will-change:transform}
   });
   $('#scoreRows').addEventListener('click',e=>{ const tr=e.target.closest('tr[data-p]'); if(!tr||state.tab==='held') return; state.sopen=state.sopen===tr.dataset.p?null:tr.dataset.p; render(); });
   $('#bilanzRows').addEventListener('click',e=>{ const tr=e.target.closest('tr[data-p]'); if(!tr) return; state.bopen=state.bopen===tr.dataset.p?null:tr.dataset.p; render(); });
-  document.addEventListener('mouseover',e=>{ const tr=e.target.closest('tr[data-p]'); if(tr) setHL(tr.dataset.p); const b=e.target.closest('.legend button[data-p]'); if(b) setHL(b.dataset.p); });
-  document.addEventListener('mouseout',e=>{ if(e.target.closest('tr[data-p],.legend button[data-p]')) setHL(null); });
+  const NOHOVER=matchMedia('(hover: none)');
+  document.addEventListener('mouseover',e=>{ if(NOHOVER.matches) return; const tr=e.target.closest('tr[data-p]'); if(tr) setHL(tr.dataset.p); const b=e.target.closest('.legend button[data-p]'); if(b) setHL(b.dataset.p); });
+  document.addEventListener('mouseout',e=>{ if(NOHOVER.matches) return; if(e.target.closest('tr[data-p],.legend button[data-p]')) setHL(null); });
   document.querySelectorAll('#bilanzTable th[data-bk]').forEach(th=>{th.style.cursor='pointer';th.addEventListener('click',()=>{const k=th.dataset.bk; if(state.bsort.key===k) state.bsort.dir*=-1; else state.bsort={key:k,dir:k==='p'?1:-1}; render();});});
   $('#pSearch').addEventListener('input',()=>renderMap());
   $('#selDateBtn').addEventListener('click',e=>openCal(e.currentTarget,selDate(),ds=>{ state.selDate=(ds===lastFlightDay()?null:ds); render(); }));
