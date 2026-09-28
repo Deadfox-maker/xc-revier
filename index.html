@@ -93,10 +93,35 @@ tr:last-child td{border-bottom:0}
 .legend .all{color:var(--ink-2);text-decoration:none;border-style:dashed}
 .tag{font-size:11px;padding:1px 6px;border:1px solid var(--line);border-radius:3px;color:var(--ink-2);white-space:nowrap}
 .err{color:#C0392B;font-size:13px;padding:0 14px 10px}
-.rules{padding:12px 14px;font-size:14px}
-.rules dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0}
-.rules dt{font-weight:600;color:var(--ink-2)}
-.rules dd{margin:0;font-family:var(--font-mono);font-size:13px}
+.busy{margin:0 14px 12px;padding:10px 12px;border:1px solid var(--accent);border-radius:6px;background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.busy.done{border-color:var(--p0);background:color-mix(in srgb,var(--p0) 10%,transparent)}
+.busyt{font-size:14px;font-weight:600;margin-bottom:6px}
+.busy.done .busybar{display:none}
+.busy.done .busyt{margin:0}
+.busybar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;position:relative}
+.busybar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.busybar.ind i{width:30%!important;position:absolute;animation:ind 1.2s ease-in-out infinite}
+@keyframes ind{0%{left:-30%}100%{left:100%}}
+.btn.pulse{animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 60%,transparent)}50%{box-shadow:0 0 0 6px transparent}}
+.rules{padding:12px 14px 14px;font-size:14px}
+.rules h2{margin-bottom:4px}
+.rg{--c:var(--ink-2);margin-top:14px}
+.rg.g1{--c:var(--accent)} .rg.g2{--c:var(--p0)} .rg.g3{--c:#E24B4A}
+.rg h3{font-family:var(--font-display);font-size:15px;text-transform:uppercase;letter-spacing:.06em;color:var(--c);margin:0 0 6px;padding-bottom:4px;border-bottom:2px solid var(--c)}
+.rc{display:grid;grid-template-columns:74px 1fr;gap:10px;align-items:start;padding:8px 0;border-bottom:1px solid var(--line)}
+.rc:last-child{border-bottom:0}
+.rb{font-family:var(--font-display);font-weight:700;font-size:19px;line-height:1;text-align:center;color:var(--c);border:1.5px solid var(--c);border-radius:6px;padding:8px 2px;white-space:nowrap}
+.rt{font-weight:700}
+.rx{font-size:13px;color:var(--ink-2);line-height:1.4}
+.bars{display:flex;gap:2px;margin-top:6px;align-items:flex-end}
+.cf{display:flex;flex-direction:column;align-items:center;flex:1 1 0;min-width:0;max-width:46px;font-size:11px;white-space:nowrap}
+.rb.sm{font-size:15px;padding:10px 2px}
+.cf i{display:block;width:18px;background:var(--c);border-radius:2px 2px 0 0;min-height:1px;order:0}
+.cf{height:62px;justify-content:flex-end}
+.cf b{font-size:11px;margin-top:2px}
+.cf em{font-style:normal;color:var(--ink-2);font-family:var(--font-mono);font-size:10px;letter-spacing:-.03em}
+
 .stack{display:grid;gap:16px}
 .ptip{position:absolute;z-index:2500;background:var(--panel);border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.35);padding:10px 12px;font-size:13px;pointer-events:none;max-width:min(560px,92vw)}
 .ptip h3{margin:0 0 6px;font-family:var(--font-display);font-size:17px;display:flex;align-items:center;gap:8px}
@@ -183,7 +208,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <span class="lbl" id="version">v48 (28.09. 10:18)</span>
+  <span class="lbl" id="version">v49 (28.09. 10:45)</span>
 </header>
 
 <div class="wrap">
@@ -217,6 +242,7 @@ svg.leaflet-zoom-animated{will-change:transform}
         <div class="lbl" style="margin-bottom:6px">Vor dem Speichern: Schirm bzw. Klasse ergänzen</div>
         <div id="prepRows"></div>
       </div>
+      <div class="busy" id="busy" hidden><div class="busyt" id="busyT"></div><div class="busybar"><i id="busyI"></i></div></div>
       <div class="err" id="err" hidden></div>
       <div class="note" id="hint">Geladen: die beiden Hohe-Wand-Flüge vom 26.09. Weitere IGC-Dateien einfach dazuladen, die Reihenfolge ergibt sich aus Datum und Startzeit.</div>
     </section>
@@ -266,23 +292,28 @@ svg.leaflet-zoom-animated{will-change:transform}
     </section>
 
     <section class="panel rules">
-      <h2>Regeln im Prototyp</h2>
-      <dl>
-        <dt>Linie</dt><dd>Korridor 25 m links und rechts vom Track</dd>
-        <dt>Schleife</dt><dd>alles, was der Track umschließt, wird gefüllt</dd>
-        <dt>Schluss</dt><dd>≤ 3 km oder ≤ 20 % der Strecke gilt als geschlossen</dd>
-        <dt>Gleicher Tag</dt><dd>gemeinsam abgeflogene Fläche gehört allen</dd>
-        <dt>Übernahme</dt><dd>späterer Tag nimmt allen bisherigen Besitzern den Teil</dd>
-        <dt>Punkte</dt><dd>km² pro Flugtag; allein × 1,2, geteilt × 1</dd>
-        <dt>Flugtag</dt><dd>ein Tag zählt, wenn mind. 5 Flüge hochgeladen sind; sonst Ruhetag ohne Wertung</dd>
-        <dt>Haltebonus</dt><dd>seit 7 Flugtagen allein gehalten × 1,3</dd>
-        <dt>Neuland</dt><dd>10 Flugtage von niemandem geflogen: +100 % × Klassenfaktor (A 1,0 / B 0,8 / C 0,6 / D 0,4 / CCC 0,2 / unbekannt 0,05)</dd>
-        <dt>Erkundung</dt><dd>vom Piloten selbst in der Saison nie geflogen: +30 % × Klassenfaktor</dd>
-        <dt>Übernahme</dt><dd>≥ 30 % eines fremden Reviers genommen: +20 % der insgesamt genommenen Fläche; nicht bei Upload später als 3 Tage nach dem Flug (ab 1.10.2026)</dd>
-        <dt>Wiederholung</dt><dd>weiterer Flug am selben Tag mit ≥ 70 % Deckung: 1. Wiederholung −10 %, jede weitere 5 % mehr, vom Tagesergebnis</dd>
-        <dt>Pilot fliegt nicht</dt><dd>nach 5 Flugtagen ohne eigenen Flug sinkt der Wert seiner bestehenden Flächen: 6. Flugtag −10 %, 7. −20 %, 8. −40 %, 9. −75 %, ab 10. −100 %. Der verlorene Wert bleibt verloren, neu Geflogenes zählt voll</dd>
-        <dt>Flächenalter</dt><dd>eigene Fläche, die 5 Flugtage nicht mehr beflogen wurde, zählt 90 / 80 / 60 / 25 / 0 %; wieder drüberfliegen macht sie frisch. Beides wird multipliziert, Fläche bleibt immer auf der Karte</dd>
-      </dl>
+      <h2>Regeln</h2>
+      <div class="rg g0"><h3>Fläche erobern</h3>
+        <div class="rc"><div class="rb">25 m</div><div><div class="rt">Linie</div><div class="rx">Korridor links und rechts vom Track</div></div></div>
+        <div class="rc"><div class="rb">◯</div><div><div class="rt">Schleife</div><div class="rx">Was der Track umschließt, wird gefüllt. Geschlossen, wenn Start und Ende ≤ 3 km oder ≤ 20 % der Strecke auseinander liegen</div></div></div>
+        <div class="rc"><div class="rb">=</div><div><div class="rt">Gleicher Tag</div><div class="rx">Gemeinsam abgeflogene Fläche gehört allen</div></div></div>
+        <div class="rc"><div class="rb">⇄</div><div><div class="rt">Späterer Tag</div><div class="rx">Nimmt allen bisherigen Besitzern den überflogenen Teil. Die Fläche bleibt auf der Karte, bis sie jemand erobert</div></div></div>
+      </div>
+      <div class="rg g1"><h3>Punkte</h3>
+        <div class="rc"><div class="rb">5</div><div><div class="rt">Flugtag</div><div class="rx">Ein Tag zählt ab 5 hochgeladenen Flügen. Sonst Ruhetag ohne Wertung</div></div></div>
+        <div class="rc"><div class="rb">×1,2</div><div><div class="rt">Allein</div><div class="rx">Fläche, die nur du hast, pro Flugtag. Geteilte Fläche zählt × 1</div></div></div>
+        <div class="rc"><div class="rb">×1,3</div><div><div class="rt">Haltebonus</div><div class="rx">Seit 7 Flugtagen allein gehalten</div></div></div>
+      </div>
+      <div class="rg g2"><h3>Boni</h3>
+        <div class="rc"><div class="rb">+100 %</div><div><div class="rt">Neuland</div><div class="rx">10 Flugtage von niemandem geflogen. Mal Klassenfaktor:</div><div class="bars"><span class="cf"><i style="height:30px"></i><b>A</b><em>1,0</em></span><span class="cf"><i style="height:24px"></i><b>B</b><em>0,8</em></span><span class="cf"><i style="height:18px"></i><b>C</b><em>0,6</em></span><span class="cf"><i style="height:12px"></i><b>D</b><em>0,4</em></span><span class="cf"><i style="height:6px"></i><b>CCC</b><em>0,2</em></span><span class="cf"><i style="height:2px"></i><b>?</b><em>0,05</em></span></div></div></div>
+        <div class="rc"><div class="rb">+30 %</div><div><div class="rt">Erkundung</div><div class="rx">Von dir in der Saison noch nie geflogen. Mal Klassenfaktor</div></div></div>
+        <div class="rc"><div class="rb">+20 %</div><div><div class="rt">Übernahme</div><div class="rx">Mindestens 30 % eines fremden Reviers genommen: 20 % der genommenen Fläche. Nicht bei Upload später als 3 Tage nach dem Flug (ab 1.10.2026)</div></div></div>
+      </div>
+      <div class="rg g3"><h3>Abzüge</h3>
+        <div class="rc"><div class="rb">−10 %</div><div><div class="rt">Wiederholung</div><div class="rx">Weiterer Flug am selben Tag mit ≥ 70 % Deckung. Jede weitere Wiederholung 5 % mehr, vom Tagesergebnis</div></div></div>
+        <div class="rc"><div class="rb sm">Pause</div><div><div class="rt">Pilot fliegt nicht</div><div class="rx">Ab dem 6. Flugtag ohne eigenen Flug sinkt der Wert deiner Flächen. Verlorener Wert bleibt verloren, neu Geflogenes zählt voll</div><div class="bars"><span class="cf dn"><i style="height:27px"></i><b>6.</b><em>−10%</em></span><span class="cf dn"><i style="height:24px"></i><b>7.</b><em>−20%</em></span><span class="cf dn"><i style="height:18px"></i><b>8.</b><em>−40%</em></span><span class="cf dn"><i style="height:8px"></i><b>9.</b><em>−75%</em></span><span class="cf dn"><i style="height:1px"></i><b>10.</b><em>−100%</em></span></div></div></div>
+        <div class="rc"><div class="rb sm">Alter</div><div><div class="rt">Flächenalter</div><div class="rx">Eigene Fläche, 5 Flugtage nicht beflogen, zählt weniger. Drüberfliegen macht sie wieder frisch</div><div class="bars"><span class="cf dn"><i style="height:27px"></i><b>6.</b><em>90%</em></span><span class="cf dn"><i style="height:24px"></i><b>7.</b><em>80%</em></span><span class="cf dn"><i style="height:18px"></i><b>8.</b><em>60%</em></span><span class="cf dn"><i style="height:8px"></i><b>9.</b><em>25%</em></span><span class="cf dn"><i style="height:1px"></i><b>10.</b><em>0%</em></span></div></div></div>
+      </div>
     </section>
   </div>
 </div>
@@ -421,10 +452,10 @@ svg.leaflet-zoom-animated{will-change:transform}
     let d=new Date(days[0]+'T00:00:00Z'); const endD=new Date(end+'T00:00:00Z');
     const dayUnions=[]; const mineEver={}; const exclHist=[]; let last=null; let flightDays=0; const lastFlew={}; const pieces={};
     const ageF=a=>a<=AGE_AFTER?1:AGE_F[Math.min(a-AGE_AFTER,AGE_F.length)-1];
-    const nDays=Math.round((endD-d)/864e5)+1; let di=0;
+    const nDays=Math.round((endD-d)/864e5)+1; let di=0; const nFD=days.filter(x=>byDay[x].length>=FLIGHTDAY_MIN).length||1;
     while(d<=endD){
       const ds=d.toISOString().slice(0,10);
-      if((byDay[ds]||[]).length>=FLIGHTDAY_MIN){ $('#areaLbl').textContent='Berechne '+ds.split('-').reverse().join('.')+' ('+(++di)+') …'; await new Promise(r=>setTimeout(r,0)); if(tok!==calcTok) return false; }
+      if((byDay[ds]||[]).length>=FLIGHTDAY_MIN){ $('#areaLbl').textContent='Berechne '+ds.split('-').reverse().join('.')+' ('+(++di)+') …'; if(busyOn) busy('Berechne Flugtag '+di+' von '+nFD+' ('+ds.split('-').reverse().join('.')+')',0.2+0.8*di/nFD); await new Promise(r=>setTimeout(r,0)); if(tok!==calcTok) return false; }
       const todays=(byDay[ds]||[]).map(f=>({f,fg:flightGeometry(f,corrKm)}));
       const isFlightDay=todays.length>=FLIGHTDAY_MIN;
       if(isFlightDay){
@@ -670,16 +701,25 @@ svg.leaflet-zoom-animated{will-change:transform}
 
   let calcTok=0;
   async function refresh(){ showErr(''); const tok=++calcTok; try{ const ok=await compute(tok); if(ok===false) return; }catch(e){ showErr('Berechnung fehlgeschlagen: '+e.message); } if(tok===calcTok){ const h=$('#hint'); h.textContent=h.textContent.replace(' Gespeichertes Ergebnis veraltet, wird neu gerechnet …',''); render(); } }
+  let busyOn=false;
+  function busy(t,frac){ busyOn=true; const b=$('#busy'); b.hidden=false; b.classList.remove('done'); $('#busyT').textContent=t; const bar=$('#busyI').parentNode; if(frac==null){ bar.classList.add('ind'); } else { bar.classList.remove('ind'); $('#busyI').style.width=Math.round(Math.max(0.03,Math.min(1,frac))*100)+'%'; } }
+  function busyDone(t){ busyOn=false; const b=$('#busy'); if(!t){ b.hidden=true; return; } b.hidden=false; b.classList.add('done'); $('#busyT').textContent='✓ '+t; }
+  function markUnsaved(){ const n=state.flights.filter(f=>!f.inDb&&!validate(f)).length; const btn=$('#dbSave'); if(btn) btn.classList.toggle('pulse',n>0); return n; }
   function showErr(m){ const el=$('#err'); el.textContent=m; el.hidden=!m; el.style.color=/gespeichert|übernommen/i.test(m)&&!/Fehler|nicht gespeichert werden|falsch/i.test(m)?'var(--p0)':''; }
 
   function loadSample(){ state.flights=SAMPLE.map(f=>({...f,coords:f.coords.map(c=>c.slice())})); $('#hint').hidden=false; refresh(); }
 
   $('#igc').addEventListener('change',async ev=>{
-    const files=[...ev.target.files]; const fb=$('#pilotName').value.trim(); const errs=[];
-    for(const f of files){ try{ const txt=await f.text(); for(const chunk of splitIGC(txt)) state.flights.push(parseIGC(chunk,fb)); }catch(e){ errs.push(`${f.name}: ${e.message}`); } }
+    const files=[...ev.target.files]; if(!files.length) return; const fb=$('#pilotName').value.trim(); const errs=[]; const added=[]; let dup=0;
+    const have=new Set(state.flights.map(f=>f.pilot+'|'+f.date+'|'+f.time));
+    for(let i=0;i<files.length;i++){ const f=files[i]; busy('Lese Datei '+(i+1)+' von '+files.length+': '+f.name,0.2*(i+1)/files.length); await new Promise(r=>setTimeout(r,0));
+      try{ const txt=await f.text(); for(const chunk of splitIGC(txt)){ const fl=parseIGC(chunk,fb); const k=fl.pilot+'|'+fl.date+'|'+fl.time; if(have.has(k)){ dup++; continue; } have.add(k); state.flights.push(fl); added.push(fl); } }catch(e){ errs.push(`${f.name}: ${e.message}`); } }
     ev.target.value='';
     $('#hint').hidden=true;
-    refresh();
+    if(added.length){ busy('Berechne Karte und Punkte …',0.2); await refresh(); }
+    const bad=added.filter(f=>validate(f)).length, unsaved=markUnsaved();
+    const names=[...new Set(added.map(f=>f.pilot))];
+    busyDone((added.length?added.length+(added.length===1?' Flug':' Flüge')+' geladen'+(names.length<=3?' ('+names.join(', ')+')':' von '+names.length+' Piloten')+'. ':'Keine neuen Flüge. ')+(dup?dup+' waren schon geladen. ':'')+(bad?bad+' ungültig. ':'')+(unsaved&&$('#dbSave')&&!$('#dbtools').hidden?'Noch nicht gespeichert: Club-Code eingeben und "Neue Flüge in Datenbank speichern" klicken.':''));
     if(errs.length) showErr(errs.join(' · '));
   });
   function splitIGC(text){
@@ -688,11 +728,11 @@ svg.leaflet-zoom-animated{will-change:transform}
   }
 
   $('#pasteBtn').addEventListener('click',()=>{ const b=$('#pasteBox'); b.hidden=!b.hidden; if(!b.hidden) $('#pasteArea').focus(); });
-  $('#pasteAdd').addEventListener('click',()=>{
+  $('#pasteAdd').addEventListener('click',async()=>{
     const txt=$('#pasteArea').value; if(!txt.trim()){ showErr('Erst IGC-Text einfügen.'); return; }
     const errs=[]; let n=0;
     for(const chunk of splitIGC(txt)){ try{ state.flights.push(parseIGC(chunk,$('#pilotName').value.trim())); n++; }catch(e){ errs.push(e.message); } }
-    if(n){ $('#pasteArea').value=''; $('#pasteBox').hidden=true; $('#hint').hidden=true; refresh(); }
+    if(n){ $('#pasteArea').value=''; $('#pasteBox').hidden=true; $('#hint').hidden=true; busy('Berechne Karte und Punkte …',0.2); await refresh(); markUnsaved(); busyDone(n+(n===1?' Flug':' Flüge')+' übernommen. Noch nicht gespeichert: "Neue Flüge in Datenbank speichern" klicken.'); }
     if(errs.length) showErr(`${n} Flüge übernommen, ${errs.length} nicht lesbar: ${errs[0]}`);
   });
 
@@ -796,9 +836,10 @@ svg.leaflet-zoom-animated{will-change:transform}
       neu.filter(f=>f.pilot===p).forEach(f=>{ f.glider=g; f.enClass=c; });
     }
     if(missing.length){ showErr('Schirm oder Klasse fehlt bei: '+missing.join(', ')); return; }
-    $('#dbSave').disabled=true; showErr('');
-    try{ const r=await dbInsert(neu,code); showErr((r.ok?r.ok+' gespeichert. ':'')+(bad.length?bad.length+' ungültig, nicht gespeichert. ':'')+(r.dup?r.dup+' waren schon drin. ':'')+(r.err.length?'Fehler: '+r.err.join(', '):'')); setDb('verbunden, '+state.flights.filter(f=>f.inDb).length+' Flüge'); renderPrep(); if(r.ok){ const msg=$('#err').textContent; await recalcAndSave(code); showErr(msg+' '+$('#err').textContent); } else refresh(); }
+    $('#dbSave').disabled=true; showErr(''); busy('Speichere '+neu.length+(neu.length===1?' Flug':' Flüge')+' in der Datenbank …',null);
+    try{ const r=await dbInsert(neu,code); markUnsaved(); if(r.ok) busy('Gespeichert. Berechne alles neu …',0.2); showErr((r.ok?r.ok+' gespeichert. ':'')+(bad.length?bad.length+' ungültig, nicht gespeichert. ':'')+(r.dup?r.dup+' waren schon drin. ':'')+(r.err.length?'Fehler: '+r.err.join(', '):'')); setDb('verbunden, '+state.flights.filter(f=>f.inDb).length+' Flüge'); renderPrep(); if(r.ok){ const msg=$('#err').textContent; await recalcAndSave(code); showErr(msg+' '+$('#err').textContent); } else refresh(); }
     catch(e){ showErr('Speichern fehlgeschlagen: '+e.message); }
+    busyDone(/Fehler|fehlgeschlagen/.test($('#err').textContent)?'':$('#err').textContent.trim()); if(!$('#busy').hidden) showErr('');
     $('#dbSave').disabled=false;
   });
 
@@ -850,12 +891,12 @@ svg.leaflet-zoom-animated{will-change:transform}
   async function recalcAndSave(code){
     state.excludeHidden=false; $('#exclHidden').checked=false;
     await refresh();
-    if(code){ const ok=await saveResult(code); showErr(ok?'Ergebnis gespeichert, Besucher sehen es ab jetzt sofort.':'Ergebnis konnte nicht gespeichert werden (Club-Code prüfen, SQL-Update ausgeführt?).'); }
+    if(code){ if(busyOn) busy('Speichere Ergebnis für alle Besucher …',null); const ok=await saveResult(code); showErr(ok?'Ergebnis gespeichert, Besucher sehen es ab jetzt sofort.':'Ergebnis konnte nicht gespeichert werden (Club-Code prüfen, SQL-Update ausgeführt?).'); }
   }
   $('#recalcBtn').addEventListener('click',async()=>{
     const code=$('#clubCode').value.trim(); if(!code){ showErr('Für "Neu berechnen" den Club-Code eingeben.'); return; }
     try{ localStorage.setItem('xc-club-code',code); }catch(e){}
-    $('#recalcBtn').disabled=true; await recalcAndSave(code); $('#recalcBtn').disabled=false;
+    $('#recalcBtn').disabled=true; busy('Berechne alles neu …',0.1); await recalcAndSave(code); const m=$('#err').textContent; if(/nicht/.test(m)) busyDone(''); else { busyDone(m); showErr(''); } $('#recalcBtn').disabled=false;
   });
 
   async function start(){
