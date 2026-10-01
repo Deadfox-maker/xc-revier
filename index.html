@@ -329,7 +329,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <div class="hdr-r"><select id="langSel" class="datebtn langsel" title="Sprache / Language / Idioma"><option value="de">DE</option><option value="en">EN</option><option value="es">ES</option></select><select id="seasonSel" class="datebtn seasonsel" title="Saison (1.10. bis 30.9.)"></select><select id="clubSel" class="datebtn clubsel" title="Club wählen"></select><button type="button" class="btn hbtn" id="newsBtn" title="Was ist neu">🆕 <span class="hl-txt">Was ist neu</span></button><button type="button" class="btn hbtn" id="msgBtn" title="Kontakt">✉ <span class="hl-txt">Kontakt</span><span class="badge" id="msgBadge" hidden></span></button><span class="lbl" id="version">v76 (01.10. 15:40)</span></div>
+  <div class="hdr-r"><select id="langSel" class="datebtn langsel" title="Sprache / Language / Idioma"><option value="de">DE</option><option value="en">EN</option><option value="es">ES</option></select><select id="seasonSel" class="datebtn seasonsel" title="Saison (1.10. bis 30.9.)"></select><select id="clubSel" class="datebtn clubsel" title="Club wählen"></select><button type="button" class="btn hbtn" id="newsBtn" title="Was ist neu">🆕 <span class="hl-txt">Was ist neu</span></button><button type="button" class="btn hbtn" id="msgBtn" title="Kontakt">✉ <span class="hl-txt">Kontakt</span><span class="badge" id="msgBadge" hidden></span></button><span class="lbl" id="version">v77 (01.10. 15:50)</span></div>
   <button type="button" class="mgear" id="mGear" aria-label="Hochladen und Einstellungen">⚙</button>
 </header>
 <div class="modal" id="modal" hidden><div class="modal-bg" id="modalBg"></div><div class="modal-box"><div class="modal-hd"><h2 id="modalTitle"></h2><button type="button" class="btn" id="modalClose">✕</button></div><div class="modal-body" id="modalBody"></div></div></div>
@@ -743,6 +743,9 @@ svg.leaflet-zoom-animated{will-change:transform}
   function validate(f){
     if(f._val!==undefined) return f._val;
     const c=f.coords; let maxJump=0;
+    if(f.date>addDays(todayStr(),1)) return f._val='Flugdatum liegt in der Zukunft';
+    if(f.date<'2000-01-01') return f._val='Flugdatum unplausibel';
+    if(c.length<10) return f._val='zu wenige Trackpunkte';
     for(let i=0;i<c.length;i++){
       const [lo,la]=c[i];
       if(Math.abs(lo)<0.01&&Math.abs(la)<0.01) return f._val='GPS-Punkt bei 0/0 (Nullpunkt)';
@@ -1088,6 +1091,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     render(); loadLog(); refreshAdminUI(); }
 
   const CHANGELOG=[
+    {v:'77',d:'01.10.2026',t:['Schutz gegen Missbrauch: Plausibilitätsprüfung beim Upload (Datum, Track), Mengenbremsen für Uploads, Nachrichten und Speichern']},
     {v:'76',d:'01.10.2026',t:['Sprachauswahl oben: Deutsch, Englisch, Spanisch']},
     {v:'75',d:'01.10.2026',t:['Saison-Auswahl oben (1.10. bis 30.9.), jede Saison startet bei null','Ergebnis pro Club und Saison gespeichert']},
     {v:'74',d:'28.09.2026',t:['Nach dem automatischen Neurechnen wird das Ergebnis gleich gespeichert, wenn ein Code eingetragen ist','"Neu berechnen" speichert nur, wenn das Ergebnis schon aktuell ist, statt nochmal zu rechnen']},
@@ -1447,7 +1451,7 @@ svg.leaflet-zoom-animated{will-change:transform}
       if(r.ok){ok++;f.inDb=true;}
       else if(r.status===409){dup++;f.inDb=true;}
       else if(r.status===401||r.status===403){ err.push('Code falsch oder keine Berechtigung ('+r.status+')'); break; }
-      else err.push(f.pilot+' (HTTP '+r.status+')');
+      else { let m=''; try{ m=(await r.json()).message||''; }catch(e){} err.push(f.pilot+': '+(m||'HTTP '+r.status)); if(/Stunde|beschäftigt/.test(m)) break; }
     }
     return {ok,dup,err};
   }
