@@ -83,6 +83,7 @@ input[type=file]::file-selector-button{font-family:var(--font-body);font-size:15
 .prep{padding:0 14px 10px}
 .prep .row{display:grid;grid-template-columns:minmax(120px,1fr) minmax(160px,1.6fr) minmax(90px,.8fr);gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--line)}
 .prep .row:first-child{border-top:0}
+.prep-rm{color:#E24B4A;font-size:15px;margin-left:6px} .prep-rm:hover{color:#E24B4A;text-decoration:underline}
 .prep select optgroup{font-weight:700;font-style:normal;color:var(--ink);background:var(--line);padding:4px 6px;font-family:var(--font-display);text-transform:uppercase;letter-spacing:.05em;font-size:14px}
 .prep select option{color:var(--ink);background:var(--bg);font-weight:400;padding:3px 6px}
 .prep input,.prep select{font-family:var(--font-body);font-size:14px;padding:5px 7px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);width:100%}
@@ -329,7 +330,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <div class="hdr-r"><select id="langSel" class="datebtn langsel" title="Sprache / Language / Idioma"><option value="de">DE</option><option value="en">EN</option><option value="es">ES</option></select><select id="seasonSel" class="datebtn seasonsel" title="Saison (1.10. bis 30.9.)"></select><select id="clubSel" class="datebtn clubsel" title="Club wählen"></select><button type="button" class="btn hbtn" id="newsBtn" title="Was ist neu">🆕 <span class="hl-txt">Was ist neu</span></button><button type="button" class="btn hbtn" id="msgBtn" title="Kontakt">✉ <span class="hl-txt">Kontakt</span><span class="badge" id="msgBadge" hidden></span></button><span class="lbl" id="version">v77 (01.10. 15:50)</span></div>
+  <div class="hdr-r"><select id="langSel" class="datebtn langsel" title="Sprache / Language / Idioma"><option value="de">DE</option><option value="en">EN</option><option value="es">ES</option></select><select id="seasonSel" class="datebtn seasonsel" title="Saison (1.10. bis 30.9.)"></select><select id="clubSel" class="datebtn clubsel" title="Club wählen"></select><button type="button" class="btn hbtn" id="newsBtn" title="Was ist neu">🆕 <span class="hl-txt">Was ist neu</span></button><button type="button" class="btn hbtn" id="msgBtn" title="Kontakt">✉ <span class="hl-txt">Kontakt</span><span class="badge" id="msgBadge" hidden></span></button><span class="lbl" id="version">v78 (02.10. 20:13)</span></div>
   <button type="button" class="mgear" id="mGear" aria-label="Hochladen und Einstellungen">⚙</button>
 </header>
 <div class="modal" id="modal" hidden><div class="modal-bg" id="modalBg"></div><div class="modal-box"><div class="modal-hd"><h2 id="modalTitle"></h2><button type="button" class="btn" id="modalClose">✕</button></div><div class="modal-body" id="modalBody"></div></div></div>
@@ -1091,6 +1092,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     render(); loadLog(); refreshAdminUI(); }
 
   const CHANGELOG=[
+    {v:'78',d:'02.10.2026',t:['Vor dem Speichern: Flüge eines Piloten mit ✕ verwerfen, wenn Schirm oder Klasse unbekannt sind']},
     {v:'77',d:'01.10.2026',t:['Schutz gegen Missbrauch: Plausibilitätsprüfung beim Upload (Datum, Track), Mengenbremsen für Uploads, Nachrichten und Speichern']},
     {v:'76',d:'01.10.2026',t:['Sprachauswahl oben: Deutsch, Englisch, Spanisch']},
     {v:'75',d:'01.10.2026',t:['Saison-Auswahl oben (1.10. bis 30.9.), jede Saison startet bei null','Ergebnis pro Club und Saison gespeichert']},
@@ -1465,12 +1467,16 @@ svg.leaflet-zoom-animated{will-change:transform}
       const g=(neu.find(f=>f.pilot===p&&f.glider)||{}).glider||'';
       const c=gliderClass(g);
       if(g&&c) continue;
-      if(!g) rows.push(`<div class="row"><span class="pilot"><span class="sw" style="background:${colorOf(p)}"></span>${esc(p)}</span><select data-p="${esc(p)}" data-k="glider">${gliderOptions('')}</select><span class="unit">kein Schirm in der IGC</span></div>`);
-      else rows.push(`<div class="row"><span class="pilot"><span class="sw" style="background:${colorOf(p)}"></span>${esc(p)}</span><span class="unit">${esc(g)} (nicht in der Liste)</span><select data-p="${esc(p)}" data-k="cls"><option value="">Klasse?</option>${['A','B','C','D','CCC'].map(x=>`<option value="${x}" style="color:${CLASS_COL[x]};font-weight:700">EN-${x}</option>`).join('')}</select></div>`);
+      const np=neu.filter(f=>f.pilot===p).length; const rm=`<button type="button" class="edit prep-rm" data-rm="${esc(p)}" title="${np===1?'Diesen Flug':'Diese '+np+' Flüge'} nicht hochladen">✕</button>`;
+      if(!g) rows.push(`<div class="row"><span class="pilot"><span class="sw" style="background:${colorOf(p)}"></span>${esc(p)}<span class="unit"> · ${np} ${np===1?'Flug':'Flüge'}</span></span><select data-p="${esc(p)}" data-k="glider">${gliderOptions('')}</select><span class="unit">kein Schirm in der IGC ${rm}</span></div>`);
+      else rows.push(`<div class="row"><span class="pilot"><span class="sw" style="background:${colorOf(p)}"></span>${esc(p)}<span class="unit"> · ${np} ${np===1?'Flug':'Flüge'}</span></span><span class="unit">${esc(g)} (nicht in der Liste) ${rm}</span><select data-p="${esc(p)}" data-k="cls"><option value="">Klasse?</option>${['A','B','C','D','CCC'].map(x=>`<option value="${x}" style="color:${CLASS_COL[x]};font-weight:700">EN-${x}</option>`).join('')}</select></div>`);
     }
     if(!rows.length){ box.hidden=true; return; }
     $('#prepRows').innerHTML=rows.join(''); box.hidden=false;
   }
+  $('#prepRows').addEventListener('click',e=>{ const b=e.target.closest('button[data-rm]'); if(!b) return; const p=b.dataset.rm; const n=state.flights.filter(f=>!f.inDb&&f.pilot===p).length;
+    state.flights=state.flights.filter(f=>f.inDb||f.pilot!==p); if(state.result){ state.result.events=state.result.events.filter(ev=>ev.f.inDb||ev.f.pilot!==p); } markUnsaved(); renderPrep(); render();
+    showErr(n+(n===1?' Flug':' Flüge')+' von '+p+' verworfen (nicht hochgeladen).'); refresh(); });
   $('#dbSave').addEventListener('click',async()=>{
     const code=$('#clubCode').value.trim(); if(!code){ showErr('Code eingeben.'); return; }
     try{ localStorage.setItem('xc-club-code',code); }catch(e){}
