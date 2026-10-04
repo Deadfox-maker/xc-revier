@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://deadfox-maker.github.io/xc-revier/
-// @version      1.8
+// @version      1.9
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -141,7 +141,8 @@ async function check(){
   setSum(ok+' von '+flights.length+' im Spiel');
   log(ok+' von '+flights.length+' Flügen sind schon im Spiel ('+cn+').', '#3FC29A');
   $('#xcr-actions').innerHTML='';
-  if(todo.length){ const b=document.createElement('button'); b.textContent=todo.length+' fehlende holen und prüfen'; b.style.cssText='padding:6px 10px;border:0;border-radius:4px;background:#5A9BE6;color:#0E1419;font-weight:700;cursor:pointer'; b.onclick=()=>fetchAll(todo,b); $('#xcr-actions').appendChild(b); }
+  if(todo.length){ const b=document.createElement('button'); b.textContent=todo.length+' fehlende holen und prüfen'; b.style.cssText='padding:6px 10px;border:0;border-radius:4px;background:#5A9BE6;color:#0E1419;font-weight:700;cursor:pointer'; b.onclick=()=>fetchAll(todo,b); $('#xcr-actions').appendChild(b);
+    const t=document.createElement('button'); t.textContent='1 Flug testen'; t.title='Holt nur den ersten fehlenden Flug, als Probelauf'; t.style.cssText='padding:6px 10px;border:1px solid #2F3941;border-radius:4px;background:#151A1F;color:#E7ECEF;cursor:pointer'; t.onclick=()=>{ b.remove(); fetchAll(todo.slice(0,1),t); }; $('#xcr-actions').appendChild(t); }
   else log('Dieser Tag ist komplett.', '#3FC29A');
   $('#xcr-check').disabled=false; return true;
 }
@@ -210,12 +211,8 @@ async function fetchIgcText(igcUrl){
 }
 async function fetchOne(f){
   f.status='busy'; mark(f);
-  let text=null;
-  // 1. Versuch: roher Seitentext enthält den Link und die Datei kommt direkt
-  try{ const page=await gm(f.url,{timeout:40000}); const m=page.ok?page.text.match(IGC_RX):null;
-    if(m){ const r=await gm(new URL(m[1].replace(/&amp;/g,'&'),f.url).href,{timeout:60000}); if(r.ok&&!isHtml(r.text)&&/^A/m.test(r.text.slice(0,200))) text=r.text; } }catch(e){}
-  // 2. Versuch: Seite im Hilfsfenster laufen lassen, bis der Link da ist (wie beim Lesezeichen)
-  if(!text){ const igcUrl=await linkViaWindow(f); text=await fetchIgcText(igcUrl); }
+  // Jede Flugseite wird genau einmal geladen, im Hilfsfenster (wie beim Lesezeichen); dann die IGC-Datei
+  const igcUrl=await linkViaWindow(f); const text=await fetchIgcText(igcUrl);
   const igc={text};
   const p=parseIGC(igc.text); const bad=validate(p.coords); if(bad) throw new Error(bad);
   if(!p.date) p.date=f.date;
