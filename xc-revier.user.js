@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://deadfox-maker.github.io/xc-revier/
-// @version      1.3
+// @version      1.4
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -122,18 +122,18 @@ async function check(){
   const byUrl=new Set(inDb.map(x=>x.xc_url).filter(Boolean));
   const tok=s=>norm(s).trim().split(' ').filter(t=>t.length>2);
   const mins=t=>{ const d=String(t||'').replace(/\D/g,''); return +d.slice(0,2)*60+ +d.slice(2,4); };
+  const noLink=inDb.filter(x=>!x.xc_url);
+  log('Im Spiel an dem Tag: '+inDb.length+' Flüge, davon '+noLink.length+' ohne XContest-Link'+(noLink.length&&noLink.length<=40?' ('+noLink.map(x=>x.pilot+' '+String(x.time).slice(0,2)+':'+String(x.time).slice(2,4)).join(', ')+')':''),'#98A4AE');
   const used=new Set(); let ok=0;
-  for(const f of flights){
-    if(byUrl.has(f.url)){ f.status='ok'; ok++; mark(f); continue; }
-    // Rückfall für Flüge, die ohne XContest-Link hochgeladen wurden: gleicher Tag, Namensbestandteil gleich,
-    // Aufzeichnungsbeginn (Spiel, UTC) zwischen 90 min vor und 5 min nach der XContest-Startzeit (UTC+1 oder UTC+2)
-    const hm=mins(f.hhmm); const a=tok(f.xcPilot);
-    let best=null, bestD=1e9;
-    for(const x of inDb){ if(x.date!==f.date||x.xc_url||used.has(x)) continue; const b=tok(x.pilot); if(!a.some(w=>b.includes(w))) continue;
-      const t=mins(x.time); for(const off of [60,120]){ const d=hm-off-t; if(d>=-5&&d<=90&&Math.abs(d)<bestD){ bestD=Math.abs(d); best=x; } } }
-    if(best){ used.add(best); f.status='ok'; f.why='vermutlich derselbe Flug (ohne XContest-Link gespeichert)'; ok++; } else f.status='todo';
-    mark(f);
-  }
+  const inWindow=(f,x)=>{ const hm=mins(f.hhmm), t=mins(x.time); let best=1e9; for(const off of [60,120]){ const d=hm-off-t; if(d>=-5&&d<=90) best=Math.min(best,Math.abs(d)); } return best; };
+  const pick=(f,test)=>{ let best=null,bestD=1e9; for(const x of noLink){ if(x.date!==f.date||used.has(x)||!test(f,x)) continue; const d=inWindow(f,x); if(d<bestD){ bestD=d; best=x; } } return best; };
+  for(const f of flights){ if(byUrl.has(f.url)){ f.status='ok'; f.why=''; ok++; mark(f); } }
+  // Durchgang 1: ganzer Name gleich. Durchgang 2: ein Namensbestandteil gleich. Jeweils gleicher Tag und Aufzeichnungsbeginn
+  // (Spiel, UTC) zwischen 90 min vor und 5 min nach der XContest-Startzeit (UTC+1 oder UTC+2).
+  for(const f of flights){ if(f.status==='ok') continue; const x=pick(f,(f,x)=>norm(f.xcPilot)===norm(x.pilot)); if(x){ used.add(x); f.status='ok'; f.why='derselbe Flug, ohne XContest-Link gespeichert'; f.twin=x; ok++; } }
+  for(const f of flights){ if(f.status==='ok') continue; const a=tok(f.xcPilot); const x=pick(f,(f,x)=>{ const b=tok(x.pilot); return a.some(w=>b.includes(w)); }); if(x){ used.add(x); f.status='ok'; f.why='vermutlich derselbe Flug (im Spiel als "'+x.pilot+'")'; f.twin=x; ok++; } else f.status='todo'; }
+  flights.forEach(mark);
+  for(const f of flights){ if(f.twin) linkTwin(f); }
   const todo=flights.filter(f=>f.status==='todo');
   setSum(ok+' von '+flights.length+' im Spiel');
   log(ok+' von '+flights.length+' Flügen sind schon im Spiel ('+cn+').', '#3FC29A');
@@ -145,6 +145,23 @@ async function check(){
 
 // ---------- Holen ----------
 let pauseResolve=null;
+// Flüge im Spiel ohne Link, mit Track, je Datum (für die Erkennung über den Track)
+const twinCache={};
+async function dbTracks(date){ if(twinCache[date]) return twinCache[date];
+  try{ const r=await gm(cfg.supabaseUrl+'/rest/v1/flights_public?select=pilot,date,time,coords&club_id=eq.'+encodeURIComponent(clubId)+'&date=eq.'+date+'&xc_url=is.null',{headers:dbH()}); twinCache[date]=r.ok?JSON.parse(r.text):[]; }catch(e){ twinCache[date]=[]; }
+  return twinCache[date]; }
+const trackKm=c=>{ let s=0; for(let i=1;i<c.length;i++) s+=kmBetween(c[i-1],c[i]); return s; };
+const secs=t=>{ const d=String(t||'').replace(/\D/g,'').padEnd(6,'0'); return +d.slice(0,2)*3600+ +d.slice(2,4)*60+ +d.slice(4,6); };
+async function findTwin(igc){
+  const list=await dbTracks(igc.date); const km=trackKm(igc.coords);
+  for(const x of list){ if(!x.coords||x.coords.length<2) continue;
+    if(Math.abs(secs(x.time)-secs(igc.time))>120) continue;
+    if(kmBetween(x.coords[0],igc.coords[0])>3||kmBetween(x.coords[x.coords.length-1],igc.coords[igc.coords.length-1])>3) continue;
+    const k2=trackKm(x.coords); if(km>1&&k2>1&&(k2/km<0.85||k2/km>1.15)) continue;
+    return x; }
+  return null; }
+async function linkTwin(f){ const x=f.twin; if(!x||x.linked) return; x.linked=true;
+  try{ const r=await gm(cfg.supabaseUrl+'/rest/v1/rpc/set_xc_url',{method:'POST',headers:dbH(),body:JSON.stringify({code:st.code,p_date:x.date,p_time:x.time,p_pilot:x.pilot,p_url:f.url})}); if(r.ok&&r.text==='true') f.why=f.why.replace(/^vermutlich /,'')+' · Link nachgetragen'; mark(f); }catch(e){} }
 async function fetchOne(f){
   f.status='busy'; mark(f);
   const page=await gm(f.url,{timeout:40000});
@@ -159,6 +176,7 @@ async function fetchOne(f){
   if(isVerify(igc.text)&&!/^A/m.test(igc.text)) throw Object.assign(new Error('Verifizierung nötig'),{verify:true});
   const p=parseIGC(igc.text); const bad=validate(p.coords); if(bad) throw new Error(bad);
   if(!p.date) p.date=f.date;
+  const twin=await findTwin(p); if(twin){ f.twin=twin; f.status='ok'; f.why='schon im Spiel als "'+twin.pilot+'" (gleicher Track)'; mark(f); linkTwin(f); return; }
   f.igc={pilot:p.pilot||f.xcPilot,pilotFromIgc:!!p.pilot,date:p.date,time:p.time,glider:p.glider||'',coords:dp(p.coords,0.0002).map(c=>[+c[0].toFixed(5),+c[1].toFixed(5)])};
   f.status='ready'; f.why=''; mark(f);
 }
@@ -169,15 +187,16 @@ async function fetchAll(list,btn){
     if(pass>1){ log('Durchgang '+pass+' für '+left.length+' Flüge in '+(pass===2?20:45)+' s …','#98A4AE'); await sleep((pass===2?20:45)*1000); }
     const fail=[];
     for(let i=0;i<left.length;i++){ const f=left[i]; log('Durchgang '+pass+': '+(i+1)+'/'+left.length+' '+f.xcPilot+' …','#98A4AE');
-      try{ await fetchOne(f); log('● '+f.igc.pilot+(f.igc.glider?' · '+f.igc.glider:' · kein Schirm in der IGC'),'#5A9BE6'); }
+      try{ await fetchOne(f); if(f.status==='ok') log('✓ '+f.xcPilot+': '+f.why,'#3FC29A'); else log('● '+f.igc.pilot+(f.igc.glider?' · '+f.igc.glider:' · kein Schirm in der IGC'),'#5A9BE6'); }
       catch(e){ f.status='fail'; f.why=e.message; mark(f); fail.push(f); log('✗ '+f.xcPilot+': '+e.message,'#F07A53');
         if(e.verify||e.login){ const d=log(e.verify?'XContest verlangt eine Verifizierung. Bitte diesen Flug in einem neuen Tab öffnen, Prüfung lösen, dann hier "Weiter" klicken.':'Bitte in einem neuen Tab bei XContest einloggen, dann "Weiter" klicken.','#E6A03B'); const a=document.createElement('a'); a.href=f.url; a.target='_blank'; a.textContent=' Flug öffnen '; a.style.color='#5A9BE6'; d.appendChild(a); const w=document.createElement('button'); w.textContent='Weiter'; w.style.cssText='margin-left:6px;padding:2px 8px'; d.appendChild(w); await new Promise(r=>{ w.onclick=()=>{ w.disabled=true; r(); }; }); } }
       if((i+1)%10===0&&i+1<left.length){ const p=log('Pause 30 s …','#98A4AE'); for(let s=30;s>0;s--){ p.textContent='Pause '+s+' s, damit XContest nicht bremst …'; await sleep(1000); } p.textContent='Pause vorbei'; }
       else await sleep(slow?rnd(6000,10000):rnd(3000,5000)); }
     left=fail;
   }
-  const ready=list.filter(f=>f.status==='ready');
-  log(ready.length+' Flüge geholt und geprüft'+(left.length?', '+left.length+' nicht ladbar.':'.'),'#3FC29A');
+  const ready=list.filter(f=>f.status==='ready'); const twins=list.filter(f=>f.status==='ok').length;
+  setSum(flights.filter(f=>f.status==='ok').length+' von '+flights.length+' im Spiel');
+  log(ready.length+' Flüge geholt und geprüft'+(twins?', '+twins+' waren schon im Spiel (gleicher Track)':'')+(left.length?', '+left.length+' nicht ladbar.':'.'),'#3FC29A');
   if(left.length){ const b=document.createElement('button'); b.textContent=left.length+' nochmal versuchen'; b.style.cssText='padding:6px 10px;border:1px solid #2F3941;border-radius:4px;background:#151A1F;color:#E7ECEF;cursor:pointer'; b.onclick=()=>fetchAll(left,b); $('#xcr-actions').appendChild(b); }
   if(ready.length) showPrep(ready); else busy=false;
   btn.remove();
