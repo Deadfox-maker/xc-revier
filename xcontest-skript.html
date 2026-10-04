@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>XC Revier · XContest-Skript</title>
+<style>body{font-family:"Segoe UI",system-ui,sans-serif;max-width:680px;margin:24px auto;padding:0 16px;line-height:1.5;color:#1B2430}h1{font-size:22px}h2{font-size:18px;margin-top:28px}.bm{display:inline-block;padding:10px 16px;background:#2C6BB0;color:#fff;border-radius:6px;text-decoration:none;font-weight:600}ol li{margin-bottom:6px}code{background:#EEF1EC;padding:1px 4px;border-radius:3px}.warn{background:#FAEEDA;border:1px solid #EF9F27;padding:8px 12px;border-radius:4px;font-size:14px}</style></head>
+<body>
+<h1>XContest-Flüge mit einem Klick ins Spiel</h1>
+<p>Das Skript läuft in Firefox oder Chrome mit der Erweiterung Violentmonkey. Auf jeder XContest-Flugliste erscheint rechts oben ein Kasten "XC Revier".</p>
+<h2>1. Einmal einrichten</h2>
+<ol>
+<li>Erweiterung <strong>Violentmonkey</strong> installieren (Firefox Add-ons bzw. Chrome Web Store, gratis).</li>
+<li>Dann hier klicken: <a class="bm" href="xc-revier.user.js">Skript installieren</a>. Violentmonkey zeigt das Skript an, mit "Installieren" bestätigen.</li>
+<li>Updates holt Violentmonkey automatisch.</li>
+</ol>
+<h2>2. Täglich</h2>
+<ol>
+<li>Bei XContest einloggen und die Tagesliste öffnen.</li>
+<li>Im Kasten "XC Revier" einmal Namen und Upload-Code eintragen (werden gemerkt), dann "Abgleich mit dem Spiel".</li>
+<li>Neben jedem Flug steht jetzt ✓ im Spiel oder ○ fehlt, oben "23 von 31 im Spiel".</li>
+<li>"fehlende holen und prüfen": Das Skript holt die IGC-Dateien mit Pausen (3 bis 5 s, alle 10 Flüge 30 s). Fehlgeschlagene werden bis zu dreimal versucht.</li>
+<li>Danach kommt die Liste "Schirm und Klasse": Grün ist aus der IGC erkannt. Bei den anderen Schirm aus der Liste wählen oder nur die Klasse anhaken, oder mit ✕ weglassen. Deine Auswahl wird für den Piloten gemerkt.</li>
+<li>"Ins Spiel hochladen". Danach steht oben "31 von 31 im Spiel". Mit dem Link "Spiel öffnen" rechnet das Spiel die neuen Tage und speichert.</li>
+</ol>
+<p class="warn">Verlangt XContest eine Verifizierung oder den Login, bleibt das Skript stehen und zeigt einen Link: Flug in neuem Tab öffnen, Prüfung lösen, dann "Weiter".</p>
+</body></html>
