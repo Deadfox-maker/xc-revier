@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://deadfox-maker.github.io/xc-revier/
-// @version      2.0
+// @version      2.1
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -21,7 +21,7 @@
 
 (function(){
 'use strict';
-if(window.top!==window.self) return; // nicht im Rahmen laufen (der Kasten lädt Flugseiten in einem Rahmen)
+if(window.top!==window.self||window.name==='xcrevier') return; // nicht im Rahmen und nicht im eigenen Hilfsfenster laufen
 const GAME='https://deadfox-maker.github.io/xc-revier/';
 const RX=/:[^\/]+\/\d{1,2}\.\d{1,2}\.\d{4}\/\d{1,2}:\d{2}/;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -35,9 +35,10 @@ const gm=async(url,opt={})=>{ try{ return await gm1(url,opt); }catch(e){ if(opt.
 const absUrl=a=>{ try{ return new URL(a.getAttribute('href'),location.href).href; }catch(e){ return ''; } };
 let flights=[]; let busy=false; let scanSig='';
 function scanFlights(){
-  const linkEls=[...document.querySelectorAll('a[href]')].filter(a=>RX.test(absUrl(a)));
+  const isFlightUrl=h=>{ try{ const u=new URL(h); return (u.hostname===location.hostname||/(^|\.)xcontest\.org$/.test(u.hostname))&&/\/[^\/:]*:[^\/]+\/\d{1,2}\.\d{1,2}\.\d{4}\/\d{1,2}:\d{2}$/.test(u.pathname); }catch(e){ return false; } };
+  const linkEls=[...document.querySelectorAll('a[href]')].filter(a=>isFlightUrl(absUrl(a)));
   const out=[]; const seen=new Set();
-  for(const a of linkEls){ const href=absUrl(a).split('#')[0]; if(seen.has(href)) continue; seen.add(href);
+  for(const a of linkEls){ const u=new URL(absUrl(a)); const href=u.origin+u.pathname; if(seen.has(href)) continue; seen.add(href);
     const m=href.match(/:([^\/]+)\/(\d{1,2})\.(\d{1,2})\.(\d{4})\/(\d{1,2}):(\d{2})/);
     out.push({url:href,a,row:a.closest('tr')||a.parentElement,xcPilot:decodeURIComponent(m[1]).replace(/[_+]/g,' '),date:`${m[4]}-${m[3].padStart(2,'0')}-${m[2].padStart(2,'0')}`,hhmm:m[5].padStart(2,'0')+m[6],status:'?',why:''}); }
   return out;
@@ -169,7 +170,7 @@ async function linkTwin(f){ const x=f.twin; if(!x||x.linked) return; x.linked=tr
 // ---------- Flugseite im Hilfsfenster öffnen, genau wie beim Lesezeichen (dort bewährt) ----------
 const IGC_RX=/(?:href|src)=["']([^"']*(?:track\.php[^"']*|\.igc(?:\?[^"']*)?))["']/i;
 const IGC_SEL='a[href*="track.php"],a[href$=".igc"],a[href*=".igc?"],a[href*="/igc/"]';
-let win=null, lastPage='';
+let win=null, lastPage='', lastAnchor=null;
 function getWin(){ if(win&&!win.closed) return win; win=window.open('about:blank','xcrevier','width=900,height=700'); return win; }
 // Prüfungserkennung wie im Lesezeichen: Titel und sichtbarer Text, nicht der Quelltext
 const winVerify=d=>{ try{ const t=(d.title+' '+(d.body?d.body.innerText.slice(0,600):'')).toLowerCase(); if(/verif|captcha|robot|human|mensch|checking your browser|just a moment|challenge/.test(t)) return true; return [...d.querySelectorAll('iframe[src*="captcha"],iframe[src*="challenge"],iframe[src*="challenges.cloudflare.com"],#challenge-form,.cf-turnstile,.g-recaptcha,.h-captcha')].some(e=>e.offsetWidth>60&&e.offsetHeight>40); }catch(e){ return false; } };
@@ -185,7 +186,7 @@ async function linkViaWindow(f){
     let d=null; try{ d=w.document; }catch(e){}
     if(!d) continue;
     const url=d.URL.split('#')[0]; const fresh=url!==prev&&url!=='about:blank';
-    if(fresh){ const a=d.querySelector(IGC_SEL); if(a){ if(warned){ warned.textContent='✓ Prüfung erledigt'; warned.style.color='#3FC29A'; } return new URL(a.getAttribute('href'),url).href; } }
+    if(fresh){ const a=d.querySelector(IGC_SEL); if(a){ if(warned){ warned.textContent='✓ Prüfung erledigt'; warned.style.color='#3FC29A'; } lastAnchor=a; return new URL(a.getAttribute('href'),url).href; } }
     if(winVerify(d)){ if(!warned){ warned=log('⚠ XContest zeigt im Hilfsfenster eine Prüfung. Bitte dort lösen, danach geht es von selbst weiter.','#E6A03B'); maxN=4*300; } n=Math.min(n,maxN-4*60); continue; }
     if(warned){ warned.textContent='✓ Prüfung erledigt'; warned.style.color='#3FC29A'; warned=null; }
     if(!fresh||d.readyState!=='complete') continue;
@@ -199,20 +200,31 @@ async function linkViaWindow(f){
 }
 function showDiag(){ if($('#xcr-diag')) return; const b=document.createElement('button'); b.id='xcr-diag'; b.textContent='Diagnose speichern'; b.title='Speichert die zuletzt fehlgeschlagene Flugseite als Datei (ohne Skripte), zum Weiterschicken'; b.style.cssText='padding:6px 10px;border:1px solid #2F3941;border-radius:4px;background:#151A1F;color:#E7ECEF;cursor:pointer';
   b.onclick=()=>{ const html=lastPage.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,''); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([html],{type:'text/html'})); a.download='xcrevier-diagnose.html'; a.click(); }; $('#xcr-actions').appendChild(b); }
-async function fetchIgcText(igcUrl){
-  const r=await gm(igcUrl,{timeout:60000});
-  if(r.ok&&!isHtml(r.text)) return r.text;
-  // Rückfall: aus dem Hilfsfenster heraus laden (gleiche Sitzung wie die Seite)
-  const w=(win&&!win.closed)?win:null; if(w){ try{ const rr=await w.fetch(igcUrl,{credentials:'include'}); const t=await rr.text(); if(rr.ok&&!isHtml(t)) return t; }catch(e){} }
-  if(!r.ok) throw new Error('IGC nicht geladen ('+r.status+')');
-  if(isVerify(r.text)) throw Object.assign(new Error('Verifizierung nötig'),{verify:true});
-  if(isLogin(r.text)) throw Object.assign(new Error('nicht eingeloggt'),{login:true});
-  throw new Error('IGC-Link liefert eine Webseite statt der Datei');
+const looksIgc=t=>typeof t==='string'&&/^A[A-Z0-9]{3}/m.test(t.slice(0,300))&&/^B\d{6}/m.test(t);
+// Datei abholen: 1. aus dem Hilfsfenster (mit Login-Cookies), 2. über die Erweiterung, 3. Klick auf den Link wie beim Lesezeichen, Datei dabei abfangen
+async function fetchIgcText(igcUrl,a){
+  const tried=[]; const w=(win&&!win.closed)?win:null;
+  if(w){ try{ const rr=await w.fetch(igcUrl,{credentials:'include'}); const t=await rr.text(); if(rr.ok&&looksIgc(t)) return t; tried.push('Fenster '+rr.status+(rr.ok?' (keine IGC-Datei)':'')); }catch(e){ tried.push('Fenster: '+e.message); } }
+  try{ const r=await gm(igcUrl,{timeout:60000}); if(r.ok&&looksIgc(r.text)) return r.text; tried.push('Erweiterung '+r.status+(r.ok?' (keine IGC-Datei)':'')); if(r.ok&&isHtml(r.text)&&isLogin(r.text)) tried.push('Login-Seite'); }catch(e){ tried.push('Erweiterung: '+e.message); }
+  if(w&&a){ const t=await clickCapture(w,a); if(t) return t; tried.push('Klick ohne Daten'); }
+  throw new Error('IGC nicht geladen ('+tried.join(' · ')+') · Link: '+igcUrl.slice(0,90));
 }
+// Klick auf den IGC-Link im Hilfsfenster; was die Seite dabei lädt (fetch, XHR oder Blob), wird abgefangen
+function clickCapture(w,a){ return new Promise(res=>{
+  let done=false; const finish=t=>{ if(done) return; done=true; try{ restore(); }catch(e){} res(t||null); };
+  const pw=w.wrappedJSObject||w; const orig={fetch:pw.fetch,open:pw.XMLHttpRequest&&pw.XMLHttpRequest.prototype.open,cou:pw.URL&&pw.URL.createObjectURL};
+  const restore=()=>{ try{ pw.fetch=orig.fetch; }catch(e){} try{ if(orig.open) pw.XMLHttpRequest.prototype.open=orig.open; }catch(e){} try{ if(orig.cou) pw.URL.createObjectURL=orig.cou; }catch(e){} };
+  const check=t=>{ if(looksIgc(t)) finish(t); };
+  try{ pw.fetch=function(){ const p=orig.fetch.apply(this,arguments); p.then(r=>{ try{ r.clone().text().then(check); }catch(e){} }); return p; }; }catch(e){}
+  try{ pw.URL.createObjectURL=function(b){ try{ if(b&&b.text) b.text().then(check); }catch(e){} return orig.cou.apply(this,arguments); }; }catch(e){}
+  try{ pw.XMLHttpRequest.prototype.open=function(){ this.addEventListener('load',function(){ try{ check(this.responseText); }catch(e){} }); return orig.open.apply(this,arguments); }; }catch(e){}
+  try{ a.setAttribute('download',''); a.click(); }catch(e){ try{ w.location.href=a.href; }catch(e2){} }
+  setTimeout(()=>finish(null),15000);
+}); }
 async function fetchOne(f){
   f.status='busy'; mark(f);
   // Jede Flugseite wird genau einmal geladen, im Hilfsfenster (wie beim Lesezeichen); dann die IGC-Datei
-  const igcUrl=await linkViaWindow(f); const text=await fetchIgcText(igcUrl);
+  const igcUrl=await linkViaWindow(f); log('IGC-Link: '+igcUrl.slice(0,100),'#98A4AE'); const text=await fetchIgcText(igcUrl,lastAnchor);
   const igc={text};
   const p=parseIGC(igc.text); const bad=validate(p.coords); if(bad) throw new Error(bad);
   if(!p.date) p.date=f.date;
@@ -230,6 +242,7 @@ async function fetchAll(list,btn){
     for(let i=0;i<left.length;i++){ const f=left[i]; log('Durchgang '+pass+': '+(i+1)+'/'+left.length+' '+f.xcPilot+' …','#98A4AE');
       try{ await fetchOne(f); if(f.status==='ok') log('✓ '+f.xcPilot+': '+f.why,'#3FC29A'); else log('● '+f.igc.pilot+(f.igc.glider?' · '+f.igc.glider:' · kein Schirm in der IGC'),'#5A9BE6'); }
       catch(e){ f.status='fail'; f.why=e.message; mark(f); fail.push(f); log('✗ '+f.xcPilot+': '+e.message,'#F07A53');
+        if(/Hilfsfenster/.test(e.message)){ const rest=left.slice(i+1); const d=log('Das Hilfsfenster ist zu oder blockiert. Bitte offen lassen. ','#E6A03B'); const w2=document.createElement('button'); w2.textContent='Hilfsfenster öffnen und weiter'; w2.style.cssText='margin-left:6px;padding:2px 8px'; d.appendChild(w2); await new Promise(r=>{ w2.onclick=()=>{ w2.disabled=true; getWin(); r(); }; }); if(!getWin()){ log('Hilfsfenster weiterhin blockiert: bitte Popups für xcontest.org erlauben.','#F07A53'); fail.push(...rest); break; } continue; }
         if(e.verify||e.login){ const d=log(e.verify?'XContest verlangt eine Verifizierung. Bitte diesen Flug in einem neuen Tab öffnen, Prüfung lösen, dann hier "Weiter" klicken.':'Bitte in einem neuen Tab bei XContest einloggen, dann "Weiter" klicken.','#E6A03B'); const a=document.createElement('a'); a.href=f.url; a.target='_blank'; a.textContent=' Flug öffnen '; a.style.color='#5A9BE6'; d.appendChild(a); const w=document.createElement('button'); w.textContent='Weiter'; w.style.cssText='margin-left:6px;padding:2px 8px'; d.appendChild(w); await new Promise(r=>{ w.onclick=()=>{ w.disabled=true; r(); }; }); } }
       if((i+1)%10===0&&i+1<left.length){ const p=log('Pause 30 s …','#98A4AE'); for(let s=30;s>0;s--){ p.textContent='Pause '+s+' s, damit XContest nicht bremst …'; await sleep(1000); } p.textContent='Pause vorbei'; }
       else await sleep(slow?rnd(6000,10000):rnd(3000,5000)); }
