@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://deadfox-maker.github.io/xc-revier/
-// @version      1.7
+// @version      1.8
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -165,32 +165,44 @@ async function findTwin(igc){
   return null; }
 async function linkTwin(f){ const x=f.twin; if(!x||x.linked) return; x.linked=true;
   try{ const r=await gm(cfg.supabaseUrl+'/rest/v1/rpc/set_xc_url',{method:'POST',headers:dbH(),body:JSON.stringify({code:st.code,p_date:x.date,p_time:x.time,p_pilot:x.pilot,p_url:f.url})}); if(r.ok&&r.text==='true') f.why=f.why.replace(/^vermutlich /,'')+' · Link nachgetragen'; mark(f); }catch(e){} }
-// ---------- Flugseite: erst roh laden, sonst im versteckten Rahmen (XContest baut die Seite per JavaScript) ----------
+// ---------- Flugseite im Hilfsfenster öffnen, genau wie beim Lesezeichen (dort bewährt) ----------
 const IGC_RX=/(?:href|src)=["']([^"']*(?:track\.php[^"']*|\.igc(?:\?[^"']*)?))["']/i;
 const IGC_SEL='a[href*="track.php"],a[href$=".igc"],a[href*=".igc?"],a[href*="/igc/"]';
-let frame=null;
-function getFrame(){ if(frame&&frame.isConnected) return frame; frame=document.createElement('iframe'); frame.id='xcr-frame'; frame.style.cssText='width:100%;height:0;border:0;display:block;background:#fff;border-radius:4px;margin-bottom:6px'; $('#xcr-body').insertBefore(frame,$('#xcr-log')); return frame; }
-function showFrame(on){ getFrame().style.height=on?'460px':'0'; }
-const frameDoc=()=>{ try{ const d=getFrame().contentDocument; return d&&d.URL!=='about:blank'?d:null; }catch(e){ return null; } };
-async function linkViaFrame(f){
-  const fr=getFrame(); fr.src='about:blank'; await sleep(150); fr.src=f.url;
-  let shown=false, limit=45000, doneAt=0; const t0=Date.now(); let title='';
-  while(Date.now()-t0<limit){
-    await sleep(300); const d=frameDoc(); if(!d) continue; title=d.title||'';
-    const a=d.querySelector(IGC_SEL); if(a){ if(shown) showFrame(false); return new URL(a.getAttribute('href'),f.url).href; }
-    const html=d.documentElement?d.documentElement.outerHTML:'';
-    if(isVerify(html)){ if(!shown){ shown=true; showFrame(true); log('XContest zeigt eine Prüfung. Bitte hier im Kasten lösen, danach geht es von selbst weiter.','#E6A03B'); limit=240000; } continue; }
-    if(d.readyState==='complete'){ if(isLogin(html)) throw Object.assign(new Error('nicht eingeloggt'),{login:true}); if(!doneAt) doneAt=Date.now(); else if(Date.now()-doneAt>8000&&!shown) break; }
+let win=null, lastPage='';
+function getWin(){ if(win&&!win.closed) return win; win=window.open('about:blank','xcrevier','width=900,height=700'); return win; }
+// Prüfungserkennung wie im Lesezeichen: Titel und sichtbarer Text, nicht der Quelltext
+const winVerify=d=>{ try{ const t=(d.title+' '+(d.body?d.body.innerText.slice(0,600):'')).toLowerCase(); if(/verif|captcha|robot|human|mensch|checking your browser|just a moment|challenge/.test(t)) return true; return [...d.querySelectorAll('iframe[src*="captcha"],iframe[src*="challenge"],#challenge-form,.cf-turnstile,.g-recaptcha,.h-captcha')].some(e=>e.offsetWidth>0&&e.offsetHeight>0); }catch(e){ return false; } };
+const winLogin=d=>{ try{ return !!d.querySelector('input[name*="login"][type="password"],form[action*="login"] input[type="password"]'); }catch(e){ return false; } };
+async function linkViaWindow(f){
+  const w=getWin(); if(!w) throw new Error('Hilfsfenster blockiert: bitte Popups für xcontest.org erlauben und nochmal klicken');
+  let prev=''; try{ prev=w.document.URL; }catch(e){}
+  w.location.href=f.url;
+  let n=0, maxN=4*60, settled=0, warned=null, title='';
+  while(n++<maxN){
+    await sleep(250);
+    if(w.closed) throw new Error('Hilfsfenster geschlossen');
+    let d=null; try{ d=w.document; }catch(e){}
+    if(!d) continue;
+    const url=d.URL.split('#')[0]; const fresh=url!==prev&&url!=='about:blank';
+    if(fresh){ const a=d.querySelector(IGC_SEL); if(a){ if(warned){ warned.textContent='✓ Prüfung erledigt'; warned.style.color='#3FC29A'; } return new URL(a.getAttribute('href'),url).href; } }
+    if(winVerify(d)){ if(!warned){ warned=log('⚠ XContest zeigt im Hilfsfenster eine Prüfung. Bitte dort lösen, danach geht es von selbst weiter.','#E6A03B'); maxN=4*300; } n=Math.min(n,maxN-4*60); continue; }
+    if(warned){ warned.textContent='✓ Prüfung erledigt'; warned.style.color='#3FC29A'; warned=null; }
+    if(!fresh||d.readyState!=='complete') continue;
+    title=d.title||'';
+    if(winLogin(d)) throw Object.assign(new Error('nicht eingeloggt'),{login:true});
+    if(++settled>32) break; // 8 s auf der fertigen Seite ohne IGC-Link
   }
-  if(shown) showFrame(false);
-  if(!frameDoc()) throw new Error('Flugseite lässt sich nicht im Rahmen laden');
+  try{ lastPage=w.document.documentElement.outerHTML; }catch(e){}
+  showDiag();
   throw new Error('kein IGC-Link (vom Piloten gesperrt?)'+(title?' · Seite: '+title.slice(0,60):''));
 }
+function showDiag(){ if($('#xcr-diag')) return; const b=document.createElement('button'); b.id='xcr-diag'; b.textContent='Diagnose speichern'; b.title='Speichert die zuletzt fehlgeschlagene Flugseite als Datei (ohne Skripte), zum Weiterschicken'; b.style.cssText='padding:6px 10px;border:1px solid #2F3941;border-radius:4px;background:#151A1F;color:#E7ECEF;cursor:pointer';
+  b.onclick=()=>{ const html=lastPage.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,''); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([html],{type:'text/html'})); a.download='xcrevier-diagnose.html'; a.click(); }; $('#xcr-actions').appendChild(b); }
 async function fetchIgcText(igcUrl){
   const r=await gm(igcUrl,{timeout:60000});
   if(r.ok&&!isHtml(r.text)) return r.text;
-  // Rückfall: aus dem Rahmen heraus laden (gleiche Sitzung wie die Seite)
-  const d=frameDoc(); if(d&&d.defaultView&&d.defaultView.fetch){ try{ const rr=await d.defaultView.fetch(igcUrl,{credentials:'include'}); const t=await rr.text(); if(rr.ok&&!isHtml(t)) return t; }catch(e){} }
+  // Rückfall: aus dem Hilfsfenster heraus laden (gleiche Sitzung wie die Seite)
+  const w=(win&&!win.closed)?win:null; if(w){ try{ const rr=await w.fetch(igcUrl,{credentials:'include'}); const t=await rr.text(); if(rr.ok&&!isHtml(t)) return t; }catch(e){} }
   if(!r.ok) throw new Error('IGC nicht geladen ('+r.status+')');
   if(isVerify(r.text)) throw Object.assign(new Error('Verifizierung nötig'),{verify:true});
   if(isLogin(r.text)) throw Object.assign(new Error('nicht eingeloggt'),{login:true});
@@ -202,8 +214,8 @@ async function fetchOne(f){
   // 1. Versuch: roher Seitentext enthält den Link und die Datei kommt direkt
   try{ const page=await gm(f.url,{timeout:40000}); const m=page.ok?page.text.match(IGC_RX):null;
     if(m){ const r=await gm(new URL(m[1].replace(/&amp;/g,'&'),f.url).href,{timeout:60000}); if(r.ok&&!isHtml(r.text)&&/^A/m.test(r.text.slice(0,200))) text=r.text; } }catch(e){}
-  // 2. Versuch: Seite im Rahmen laufen lassen, bis der Link da ist
-  if(!text){ const igcUrl=await linkViaFrame(f); text=await fetchIgcText(igcUrl); }
+  // 2. Versuch: Seite im Hilfsfenster laufen lassen, bis der Link da ist (wie beim Lesezeichen)
+  if(!text){ const igcUrl=await linkViaWindow(f); text=await fetchIgcText(igcUrl); }
   const igc={text};
   const p=parseIGC(igc.text); const bad=validate(p.coords); if(bad) throw new Error(bad);
   if(!p.date) p.date=f.date;
@@ -212,6 +224,7 @@ async function fetchOne(f){
   f.status='ready'; f.why=''; mark(f);
 }
 async function fetchAll(list,btn){
+  if(!getWin()){ log('Hilfsfenster blockiert: bitte Popups für xcontest.org erlauben und nochmal klicken.','#F07A53'); return; }
   btn.disabled=true; busy=true; const slow=st.tempo==='langsam';
   let left=list.slice();
   for(let pass=1;pass<=3&&left.length;pass++){
@@ -230,6 +243,7 @@ async function fetchAll(list,btn){
   log(ready.length+' Flüge geholt und geprüft'+(twins?', '+twins+' waren schon im Spiel (gleicher Track)':'')+(left.length?', '+left.length+' nicht ladbar.':'.'),'#3FC29A');
   if(left.length){ const b=document.createElement('button'); b.textContent=left.length+' nochmal versuchen'; b.style.cssText='padding:6px 10px;border:1px solid #2F3941;border-radius:4px;background:#151A1F;color:#E7ECEF;cursor:pointer'; b.onclick=()=>fetchAll(left,b); $('#xcr-actions').appendChild(b); }
   if(ready.length) showPrep(ready); else busy=false;
+  if(!left.length){ try{ win&&win.close(); }catch(e){} }
   btn.remove();
 }
 
