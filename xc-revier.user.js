@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://deadfox-maker.github.io/xc-revier/
-// @version      1.6
+// @version      1.7
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -21,6 +21,7 @@
 
 (function(){
 'use strict';
+if(window.top!==window.self) return; // nicht im Rahmen laufen (der Kasten lädt Flugseiten in einem Rahmen)
 const GAME='https://deadfox-maker.github.io/xc-revier/';
 const RX=/:[^\/]+\/\d{1,2}\.\d{1,2}\.\d{4}\/\d{1,2}:\d{2}/;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -100,7 +101,7 @@ function dp(pts,tol){ if(pts.length<3) return pts; let dmax=0,idx=0; const [x1,y
   for(let i=1;i<pts.length-1;i++){ const [x,y]=pts[i]; const d=Math.abs((y2-y1)*x-(x2-x1)*y+x2*y1-y2*x1)/L; if(d>dmax){dmax=d;idx=i;} }
   if(dmax>tol){ const a=dp(pts.slice(0,idx+1),tol), b=dp(pts.slice(idx),tol); return a.slice(0,-1).concat(b); } return [pts[0],pts[pts.length-1]]; }
 const visibleText=h=>String(h).replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<head[\s\S]*?<\/head>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
-const isVerify=h=>{ if(/cf-turnstile|h-captcha|g-recaptcha|id="challenge-form"|challenge-platform/i.test(h)) return true; const t=visibleText(h).slice(0,3000); return /verify (that )?you are (a )?human|are you (a )?human|checking your browser|just a moment|i am not a robot|verifizier|ověř/i.test(t); };
+const isVerify=h=>{ const t=visibleText(h).slice(0,4000); return /verify (that )?you are (a )?human|are you (a )?human|checking your browser|just a moment|not a robot|kein roboter|security check|sicherheitsüberprüfung|nejste robot/i.test(t); };
 const isHtml=t=>/^\s*</.test(t)||/<html|<!doctype/i.test(t.slice(0,500));
 const isLogin=t=>/type="password"/i.test(t)&&!/track\.php/.test(t);
 
@@ -173,13 +174,13 @@ function showFrame(on){ getFrame().style.height=on?'460px':'0'; }
 const frameDoc=()=>{ try{ const d=getFrame().contentDocument; return d&&d.URL!=='about:blank'?d:null; }catch(e){ return null; } };
 async function linkViaFrame(f){
   const fr=getFrame(); fr.src='about:blank'; await sleep(150); fr.src=f.url;
-  let shown=false, limit=45000; const t0=Date.now(); let title='';
+  let shown=false, limit=45000, doneAt=0; const t0=Date.now(); let title='';
   while(Date.now()-t0<limit){
     await sleep(300); const d=frameDoc(); if(!d) continue; title=d.title||'';
     const a=d.querySelector(IGC_SEL); if(a){ if(shown) showFrame(false); return new URL(a.getAttribute('href'),f.url).href; }
     const html=d.documentElement?d.documentElement.outerHTML:'';
     if(isVerify(html)){ if(!shown){ shown=true; showFrame(true); log('XContest zeigt eine Prüfung. Bitte hier im Kasten lösen, danach geht es von selbst weiter.','#E6A03B'); limit=240000; } continue; }
-    if(d.readyState==='complete'&&isLogin(html)) throw Object.assign(new Error('nicht eingeloggt'),{login:true});
+    if(d.readyState==='complete'){ if(isLogin(html)) throw Object.assign(new Error('nicht eingeloggt'),{login:true}); if(!doneAt) doneAt=Date.now(); else if(Date.now()-doneAt>8000&&!shown) break; }
   }
   if(shown) showFrame(false);
   if(!frameDoc()) throw new Error('Flugseite lässt sich nicht im Rahmen laden');
@@ -197,10 +198,12 @@ async function fetchIgcText(igcUrl){
 }
 async function fetchOne(f){
   f.status='busy'; mark(f);
-  let igcUrl=null;
-  try{ const page=await gm(f.url,{timeout:40000}); const m=page.ok?page.text.match(IGC_RX):null; if(m) igcUrl=new URL(m[1].replace(/&amp;/g,'&'),f.url).href; }catch(e){}
-  if(!igcUrl) igcUrl=await linkViaFrame(f);
-  const text=await fetchIgcText(igcUrl);
+  let text=null;
+  // 1. Versuch: roher Seitentext enthält den Link und die Datei kommt direkt
+  try{ const page=await gm(f.url,{timeout:40000}); const m=page.ok?page.text.match(IGC_RX):null;
+    if(m){ const r=await gm(new URL(m[1].replace(/&amp;/g,'&'),f.url).href,{timeout:60000}); if(r.ok&&!isHtml(r.text)&&/^A/m.test(r.text.slice(0,200))) text=r.text; } }catch(e){}
+  // 2. Versuch: Seite im Rahmen laufen lassen, bis der Link da ist
+  if(!text){ const igcUrl=await linkViaFrame(f); text=await fetchIgcText(igcUrl); }
   const igc={text};
   const p=parseIGC(igc.text); const bad=validate(p.coords); if(bad) throw new Error(bad);
   if(!p.date) p.date=f.date;
