@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://deadfox-maker.github.io/xc-revier/
-// @version      1.0
+// @version      1.1
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
-// @match        https://www.xcontest.org/*
-// @match        https://xcontest.org/*
+// @match        *://www.xcontest.org/*
+// @match        *://xcontest.org/*
+// @match        *://*.xcontest.org/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -30,7 +31,6 @@ const gm=(url,opt={})=>new Promise((res,rej)=>{ GM_xmlhttpRequest({method:opt.me
 
 // ---------- Fluglinks auf dieser Seite ----------
 const linkEls=[...document.querySelectorAll('a[href]')].filter(a=>RX.test(new URL(a.getAttribute('href'),location.href).href));
-if(!linkEls.length) return;
 const flights=[]; const seen=new Set();
 for(const a of linkEls){ const href=new URL(a.getAttribute('href'),location.href).href.split('#')[0]; if(seen.has(href)) continue; seen.add(href);
   const m=href.match(/:([^\/]+)\/(\d{1,2})\.(\d{1,2})\.(\d{4})\/(\d{1,2}):(\d{2})/);
@@ -40,7 +40,7 @@ for(const a of linkEls){ const href=new URL(a.getAttribute('href'),location.href
 const st={code:GM_getValue('code',''),name:GM_getValue('name',''),tempo:GM_getValue('tempo','normal')};
 const panel=document.createElement('div'); panel.id='xcr-panel';
 panel.style.cssText='position:fixed;top:8px;right:8px;z-index:2147483000;width:420px;max-height:92vh;overflow:auto;background:#1E252C;color:#E7ECEF;border:1px solid #2F3941;border-radius:8px;font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5)';
-panel.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #2F3941"><strong style="font-size:15px">XC Revier</strong><span id="xcr-sum" style="color:#98A4AE">${flights.length} Flüge auf dieser Seite</span><button id="xcr-min" title="Einklappen" style="margin-left:auto;background:none;border:1px solid #2F3941;color:#E7ECEF;border-radius:4px;cursor:pointer;padding:2px 8px">–</button></div>
+panel.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #2F3941"><strong style="font-size:15px">XC Revier</strong><span id="xcr-sum" style="color:#98A4AE">${flights.length?flights.length+" Flüge auf dieser Seite":"keine Flugliste auf dieser Seite"}</span><button id="xcr-min" title="Einklappen" style="margin-left:auto;background:none;border:1px solid #2F3941;color:#E7ECEF;border-radius:4px;cursor:pointer;padding:2px 8px">–</button></div>
 <div id="xcr-body" style="padding:10px 12px">
  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
   <input id="xcr-name" placeholder="Dein Name" value="${esc(st.name)}" style="padding:6px;border:1px solid #2F3941;border-radius:4px;background:#151A1F;color:#E7ECEF">
@@ -56,6 +56,7 @@ panel.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:8px
 </div>`;
 document.body.appendChild(panel);
 const $=s=>panel.querySelector(s);
+if(!flights.length){ $('#xcr-check').disabled=true; $('#xcr-check').style.opacity='.5'; $('#xcr-log').textContent='Skript läuft. Bitte eine Flugliste öffnen (z. B. Flüge, dann Tageswertung PG), dann erscheint hier der Abgleich.'; }
 $('#xcr-tempo').value=st.tempo;
 $('#xcr-min').onclick=()=>{ const b=$('#xcr-body'); b.hidden=!b.hidden; $('#xcr-min').textContent=b.hidden?'+':'–'; };
 const log=(s,c)=>{ const d=document.createElement('div'); d.textContent=s; if(c) d.style.color=c; $('#xcr-log').appendChild(d); $('#xcr-log').scrollTop=1e9; return d; };
