@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://deadfox-maker.github.io/xc-revier/
-// @version      1.1
+// @version      1.2
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -30,17 +30,22 @@ const gm=(url,opt={})=>new Promise((res,rej)=>{ GM_xmlhttpRequest({method:opt.me
   onload:r=>res({ok:r.status>=200&&r.status<300,status:r.status,text:r.responseText,headers:r.responseHeaders||''}),onerror:()=>rej(new Error('Netzfehler')),ontimeout:()=>rej(new Error('Zeitüberschreitung'))}); });
 
 // ---------- Fluglinks auf dieser Seite ----------
-const linkEls=[...document.querySelectorAll('a[href]')].filter(a=>RX.test(new URL(a.getAttribute('href'),location.href).href));
-const flights=[]; const seen=new Set();
-for(const a of linkEls){ const href=new URL(a.getAttribute('href'),location.href).href.split('#')[0]; if(seen.has(href)) continue; seen.add(href);
-  const m=href.match(/:([^\/]+)\/(\d{1,2})\.(\d{1,2})\.(\d{4})\/(\d{1,2}):(\d{2})/);
-  flights.push({url:href,a,row:a.closest('tr')||a.parentElement,xcPilot:decodeURIComponent(m[1]).replace(/[_+]/g,' '),date:`${m[4]}-${m[3].padStart(2,'0')}-${m[2].padStart(2,'0')}`,hhmm:m[5].padStart(2,'0')+m[6],status:'?',why:''}); }
+const absUrl=a=>{ try{ return new URL(a.getAttribute('href'),location.href).href; }catch(e){ return ''; } };
+let flights=[]; let busy=false; let scanSig='';
+function scanFlights(){
+  const linkEls=[...document.querySelectorAll('a[href]')].filter(a=>RX.test(absUrl(a)));
+  const out=[]; const seen=new Set();
+  for(const a of linkEls){ const href=absUrl(a).split('#')[0]; if(seen.has(href)) continue; seen.add(href);
+    const m=href.match(/:([^\/]+)\/(\d{1,2})\.(\d{1,2})\.(\d{4})\/(\d{1,2}):(\d{2})/);
+    out.push({url:href,a,row:a.closest('tr')||a.parentElement,xcPilot:decodeURIComponent(m[1]).replace(/[_+]/g,' '),date:`${m[4]}-${m[3].padStart(2,'0')}-${m[2].padStart(2,'0')}`,hhmm:m[5].padStart(2,'0')+m[6],status:'?',why:''}); }
+  return out;
+}
 
 // ---------- Panel ----------
 const st={code:GM_getValue('code',''),name:GM_getValue('name',''),tempo:GM_getValue('tempo','normal')};
 const panel=document.createElement('div'); panel.id='xcr-panel';
 panel.style.cssText='position:fixed;top:8px;right:8px;z-index:2147483000;width:420px;max-height:92vh;overflow:auto;background:#1E252C;color:#E7ECEF;border:1px solid #2F3941;border-radius:8px;font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5)';
-panel.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #2F3941"><strong style="font-size:15px">XC Revier</strong><span id="xcr-sum" style="color:#98A4AE">${flights.length?flights.length+" Flüge auf dieser Seite":"keine Flugliste auf dieser Seite"}</span><button id="xcr-min" title="Einklappen" style="margin-left:auto;background:none;border:1px solid #2F3941;color:#E7ECEF;border-radius:4px;cursor:pointer;padding:2px 8px">–</button></div>
+panel.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #2F3941"><strong style="font-size:15px">XC Revier</strong><span id="xcr-sum" style="color:#98A4AE">suche Flugliste …</span><button id="xcr-min" title="Einklappen" style="margin-left:auto;background:none;border:1px solid #2F3941;color:#E7ECEF;border-radius:4px;cursor:pointer;padding:2px 8px">–</button></div>
 <div id="xcr-body" style="padding:10px 12px">
  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
   <input id="xcr-name" placeholder="Dein Name" value="${esc(st.name)}" style="padding:6px;border:1px solid #2F3941;border-radius:4px;background:#151A1F;color:#E7ECEF">
@@ -56,7 +61,6 @@ panel.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:8px
 </div>`;
 document.body.appendChild(panel);
 const $=s=>panel.querySelector(s);
-if(!flights.length){ $('#xcr-check').disabled=true; $('#xcr-check').style.opacity='.5'; $('#xcr-log').textContent='Skript läuft. Bitte eine Flugliste öffnen (z. B. Flüge, dann Tageswertung PG), dann erscheint hier der Abgleich.'; }
 $('#xcr-tempo').value=st.tempo;
 $('#xcr-min').onclick=()=>{ const b=$('#xcr-body'); b.hidden=!b.hidden; $('#xcr-min').textContent=b.hidden?'+':'–'; };
 const log=(s,c)=>{ const d=document.createElement('div'); d.textContent=s; if(c) d.style.color=c; $('#xcr-log').appendChild(d); $('#xcr-log').scrollTop=1e9; return d; };
@@ -154,7 +158,7 @@ async function fetchOne(f){
   f.status='ready'; f.why=''; mark(f);
 }
 async function fetchAll(list,btn){
-  btn.disabled=true; const slow=st.tempo==='langsam';
+  btn.disabled=true; busy=true; const slow=st.tempo==='langsam';
   let left=list.slice();
   for(let pass=1;pass<=3&&left.length;pass++){
     if(pass>1){ log('Durchgang '+pass+' für '+left.length+' Flüge in '+(pass===2?20:45)+' s …','#98A4AE'); await sleep((pass===2?20:45)*1000); }
@@ -170,7 +174,7 @@ async function fetchAll(list,btn){
   const ready=list.filter(f=>f.status==='ready');
   log(ready.length+' Flüge geholt und geprüft'+(left.length?', '+left.length+' nicht ladbar.':'.'),'#3FC29A');
   if(left.length){ const b=document.createElement('button'); b.textContent=left.length+' nochmal versuchen'; b.style.cssText='padding:6px 10px;border:1px solid #2F3941;border-radius:4px;background:#151A1F;color:#E7ECEF;cursor:pointer'; b.onclick=()=>fetchAll(left,b); $('#xcr-actions').appendChild(b); }
-  if(ready.length) showPrep(ready);
+  if(ready.length) showPrep(ready); else busy=false;
   btn.remove();
 }
 
@@ -203,6 +207,7 @@ function showPrep(ready){
 
 // ---------- Hochladen ----------
 async function upload(ready){
+  busy=true;
   const btn=$('#xcr-up'); btn.disabled=true; const info=$('#xcr-upinfo');
   const rows=[...panel.querySelectorAll('.xcr-prow')]; const choice={}; const missing=[];
   for(const r of rows){ if(r.dataset.skip) continue; const p=r.dataset.p; let g=r.querySelector('.xcr-pre').value, c=r.querySelector('.xcr-cls').value;
@@ -223,10 +228,23 @@ async function upload(ready){
   const total=flights.filter(f=>f.status==='ok').length; setSum(total+' von '+flights.length+' im Spiel');
   info.textContent=''; log('Hochgeladen: '+ok+(dup?', '+dup+' waren schon drin':'')+(fail?', '+fail+' Fehler':'')+'. Jetzt '+total+' von '+flights.length+' im Spiel.','#3FC29A');
   const a=document.createElement('a'); a.href=GAME+'?club='+encodeURIComponent(clubId)+'&season='+season(flights[0].date); a.target='_blank'; a.textContent='Spiel öffnen (rechnet die neuen Tage und speichert)'; a.style.cssText='color:#5A9BE6;font-weight:700'; $('#xcr-actions').appendChild(a);
-  btn.remove();
+  btn.remove(); busy=false;
 }
 const season=ds=>{ const y=+ds.slice(0,4), m=+ds.slice(5,7); return m>=10?y:y-1; };
 
 $('#xcr-check').onclick=check;
-if(st.code){ check(); }
+function applyScan(){
+  if(busy) return;
+  const found=scanFlights(); const sig=found.map(f=>f.url).join('|');
+  if(sig===scanSig) return; scanSig=sig;
+  document.querySelectorAll('.xcr-st').forEach(e=>e.remove());
+  flights=found; $('#xcr-actions').innerHTML=''; $('#xcr-prep').hidden=true; $('#xcr-prep').innerHTML='';
+  if(!flights.length){ setSum('keine Flugliste auf dieser Seite'); $('#xcr-check').disabled=true; $('#xcr-check').style.opacity='.5'; $('#xcr-log').textContent='Skript läuft. Bitte eine Flugliste öffnen (z. B. Flüge, dann Tageswertung PG), dann erscheint hier der Abgleich.'; return; }
+  setSum(flights.length+' Flüge auf dieser Seite'); $('#xcr-check').disabled=false; $('#xcr-check').style.opacity='1'; $('#xcr-log').textContent='';
+  if(st.code) check();
+}
+applyScan();
+const mo=new MutationObserver(()=>{ clearTimeout(mo.t); mo.t=setTimeout(applyScan,800); });
+mo.observe(document.body,{childList:true,subtree:true});
+setInterval(applyScan,3000);
 })();
