@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://deadfox-maker.github.io/xc-revier/
-// @version      1.2
+// @version      1.3
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -26,8 +26,9 @@ const RX=/:[^\/]+\/\d{1,2}\.\d{1,2}\.\d{4}\/\d{1,2}:\d{2}/;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const rnd=(a,b)=>a+Math.random()*(b-a);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const gm=(url,opt={})=>new Promise((res,rej)=>{ GM_xmlhttpRequest({method:opt.method||'GET',url,headers:opt.headers||{},data:opt.body,timeout:opt.timeout||30000,
+const gm1=(url,opt={})=>new Promise((res,rej)=>{ GM_xmlhttpRequest({method:opt.method||'GET',url,headers:opt.headers||{},data:opt.body,timeout:opt.timeout||30000,
   onload:r=>res({ok:r.status>=200&&r.status<300,status:r.status,text:r.responseText,headers:r.responseHeaders||''}),onerror:()=>rej(new Error('Netzfehler')),ontimeout:()=>rej(new Error('Zeitüberschreitung'))}); });
+const gm=async(url,opt={})=>{ try{ return await gm1(url,opt); }catch(e){ if(opt.method&&opt.method!=='GET'&&!/rpc\//.test(url)) throw e; await sleep(1500); return gm1(url,opt); } };
 
 // ---------- Fluglinks auf dieser Seite ----------
 const absUrl=a=>{ try{ return new URL(a.getAttribute('href'),location.href).href; }catch(e){ return ''; } };
@@ -120,13 +121,17 @@ async function check(){
   for(const d of dates){ try{ const r=await gm(cfg.supabaseUrl+'/rest/v1/flights_public?select=pilot,date,time,xc_url,glider,en_class&club_id=eq.'+encodeURIComponent(clubId)+'&date=eq.'+d,{headers:dbH()}); if(r.ok) inDb=inDb.concat(JSON.parse(r.text)); }catch(e){} }
   const byUrl=new Set(inDb.map(x=>x.xc_url).filter(Boolean));
   const tok=s=>norm(s).trim().split(' ').filter(t=>t.length>2);
-  let ok=0;
+  const mins=t=>{ const d=String(t||'').replace(/\D/g,''); return +d.slice(0,2)*60+ +d.slice(2,4); };
+  const used=new Set(); let ok=0;
   for(const f of flights){
     if(byUrl.has(f.url)){ f.status='ok'; ok++; mark(f); continue; }
-    // Rückfall für Flüge, die ohne XContest-Link hochgeladen wurden: gleicher Tag, Startzeit ±3 min (UTC+1/+2), Namensbestandteil gleich
-    const hm=+f.hhmm.slice(0,2)*60+ +f.hhmm.slice(2);
-    const hit=inDb.find(x=>{ if(x.date!==f.date||x.xc_url) return false; const t=+x.time.slice(0,2)*60+ +x.time.slice(2,4); const diff=Math.min(Math.abs(hm-t-60),Math.abs(hm-t-120),Math.abs(hm-t)); if(diff>3) return false; const a=tok(f.xcPilot), b=tok(x.pilot); return a.some(w=>b.includes(w)); });
-    if(hit){ f.status='ok'; f.why='vermutlich derselbe Flug (ohne XContest-Link gespeichert)'; ok++; } else f.status='todo';
+    // Rückfall für Flüge, die ohne XContest-Link hochgeladen wurden: gleicher Tag, Namensbestandteil gleich,
+    // Aufzeichnungsbeginn (Spiel, UTC) zwischen 90 min vor und 5 min nach der XContest-Startzeit (UTC+1 oder UTC+2)
+    const hm=mins(f.hhmm); const a=tok(f.xcPilot);
+    let best=null, bestD=1e9;
+    for(const x of inDb){ if(x.date!==f.date||x.xc_url||used.has(x)) continue; const b=tok(x.pilot); if(!a.some(w=>b.includes(w))) continue;
+      const t=mins(x.time); for(const off of [60,120]){ const d=hm-off-t; if(d>=-5&&d<=90&&Math.abs(d)<bestD){ bestD=Math.abs(d); best=x; } } }
+    if(best){ used.add(best); f.status='ok'; f.why='vermutlich derselbe Flug (ohne XContest-Link gespeichert)'; ok++; } else f.status='todo';
     mark(f);
   }
   const todo=flights.filter(f=>f.status==='todo');
