@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://deadfox-maker.github.io/xc-revier/
-// @version      2.2
+// @version      2.5
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -23,6 +23,7 @@
 'use strict';
 if(window.top!==window.self||window.name==='xcrevier') return; // nicht im Rahmen und nicht im eigenen Hilfsfenster laufen
 const GAME='https://deadfox-maker.github.io/xc-revier/';
+const BUILD='v2.5 · 04.10.2026 21:16';
 const RX=/:[^\/]+\/\d{1,2}\.\d{1,2}\.\d{4}\/\d{1,2}:\d{2}/;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const rnd=(a,b)=>a+Math.random()*(b-a);
@@ -48,7 +49,7 @@ function scanFlights(){
 const st={code:GM_getValue('code',''),name:GM_getValue('name',''),tempo:GM_getValue('tempo','normal')};
 const panel=document.createElement('div'); panel.id='xcr-panel';
 panel.style.cssText='position:fixed;top:8px;right:8px;z-index:2147483000;width:420px;max-height:92vh;overflow:auto;background:#1E252C;color:#E7ECEF;border:1px solid #2F3941;border-radius:8px;font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5)';
-panel.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #2F3941"><strong style="font-size:15px">XC Revier</strong><span id="xcr-sum" style="color:#98A4AE">suche Flugliste …</span><button id="xcr-min" title="Einklappen" style="margin-left:auto;background:none;border:1px solid #2F3941;color:#E7ECEF;border-radius:4px;cursor:pointer;padding:2px 8px">–</button></div>
+panel.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #2F3941"><strong style="font-size:15px">XC Revier</strong><span id="xcr-sum" style="color:#98A4AE">suche Flugliste …</span><span title="Skriptversion und Erstellzeit" style="color:#5F6B75;font-size:11px;white-space:nowrap">${BUILD}</span><button id="xcr-min" title="Einklappen" style="margin-left:auto;background:none;border:1px solid #2F3941;color:#E7ECEF;border-radius:4px;cursor:pointer;padding:2px 8px">–</button></div>
 <div id="xcr-body" style="padding:10px 12px">
  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
   <input id="xcr-name" placeholder="Dein Name" value="${esc(st.name)}" style="padding:6px;border:1px solid #2F3941;border-radius:4px;background:#151A1F;color:#E7ECEF">
@@ -120,6 +121,7 @@ async function check(){
   else { clubId=role.club; sel.hidden=true; }
   const cn=(clubs.find(c=>c.id===clubId)||{}).name||clubId;
   $('#xcr-role').textContent=(role.role==='super'?'Hauptadmin':role.role==='admin'?'Admin':'Upload')+' · Club: '+cn;
+  flights.forEach(f=>{ f.status='?'; f.why=''; f.twin=null; }); // Abgleich immer frisch
   const dates=[...new Set(flights.map(f=>f.date))];
   inDb=[];
   for(const d of dates){ try{ const r=await gm(cfg.supabaseUrl+'/rest/v1/flights_public?select=pilot,date,time,xc_url,glider,en_class&club_id=eq.'+encodeURIComponent(clubId)+'&date=eq.'+d,{headers:dbH()}); if(r.ok) inDb=inDb.concat(JSON.parse(r.text)); }catch(e){} }
@@ -143,7 +145,7 @@ async function check(){
   log(ok+' von '+flights.length+' Flügen sind schon im Spiel ('+cn+').', '#3FC29A');
   $('#xcr-actions').innerHTML='';
   if(todo.length){ const b=document.createElement('button'); b.textContent=todo.length+' fehlende holen und prüfen'; b.style.cssText='padding:6px 10px;border:0;border-radius:4px;background:#5A9BE6;color:#0E1419;font-weight:700;cursor:pointer'; b.onclick=()=>fetchAll(todo,b); $('#xcr-actions').appendChild(b);
-    const t=document.createElement('button'); t.textContent='1 Flug testen'; t.title='Holt nur den ersten fehlenden Flug, als Probelauf'; t.style.cssText='padding:6px 10px;border:1px solid #2F3941;border-radius:4px;background:#151A1F;color:#E7ECEF;cursor:pointer'; t.onclick=()=>{ b.remove(); fetchAll(todo.slice(0,1),t); }; $('#xcr-actions').appendChild(t); }
+    const t=document.createElement('button'); t.textContent='1 Flug testen'; t.title='Holt nur den ersten fehlenden Flug, als Probelauf'; t.style.cssText='padding:6px 10px;border:1px solid #2F3941;border-radius:4px;background:#151A1F;color:#E7ECEF;cursor:pointer'; t.onclick=()=>{ b.remove(); fetchAll(todo.slice(0,1),t).then(()=>{ if(!busy) check(); }); }; $('#xcr-actions').appendChild(t); }
   else log('Dieser Tag ist komplett.', '#3FC29A');
   $('#xcr-check').disabled=false; return true;
 }
@@ -233,6 +235,7 @@ async function fetchOne(f){
   f.status='ready'; f.why=''; mark(f);
 }
 async function fetchAll(list,btn){
+  $('#xcr-actions').querySelectorAll('button').forEach(b=>{ if(b!==btn&&/testen|holen/.test(b.textContent)) b.remove(); });
   if(!getWin()){ log('Hilfsfenster blockiert: bitte Popups für xcontest.org erlauben und nochmal klicken.','#F07A53'); return; }
   btn.disabled=true; busy=true; const slow=st.tempo==='langsam';
   let left=list.slice();
@@ -252,14 +255,20 @@ async function fetchAll(list,btn){
   setSum(flights.filter(f=>f.status==='ok').length+' von '+flights.length+' im Spiel');
   log(ready.length+' Flüge geholt und geprüft'+(twins?', '+twins+' waren schon im Spiel (gleicher Track)':'')+(left.length?', '+left.length+' nicht ladbar.':'.'),'#3FC29A');
   if(left.length){ const b=document.createElement('button'); b.textContent=left.length+' nochmal versuchen'; b.style.cssText='padding:6px 10px;border:1px solid #2F3941;border-radius:4px;background:#151A1F;color:#E7ECEF;cursor:pointer'; b.onclick=()=>fetchAll(left,b); $('#xcr-actions').appendChild(b); }
+  if(!left.length){ const dg=$('#xcr-diag'); if(dg) dg.remove(); }
   if(ready.length) showPrep(ready); else busy=false;
   if(!left.length){ try{ win&&win.close(); }catch(e){} }
   btn.remove();
 }
 
 // ---------- Prüfen vor dem Hochladen (Schirm/Klasse pro Pilot) ----------
+function collapseLog(){ const lg=$('#xcr-log'); if($('#xcr-logtog')) return; lg.style.maxHeight='0'; lg.style.overflow='hidden'; lg.style.paddingTop='0'; lg.style.borderTop='0';
+  const t=document.createElement('button'); t.id='xcr-logtog'; t.textContent='Protokoll anzeigen'; t.style.cssText='margin:4px 0 8px;padding:2px 8px;border:1px solid #2F3941;border-radius:4px;background:none;color:#98A4AE;cursor:pointer;font-size:12px';
+  t.onclick=()=>{ const open=lg.style.maxHeight==='0px'; lg.style.maxHeight=open?'30vh':'0'; lg.style.paddingTop=open?'6px':'0'; lg.style.borderTop=open?'1px solid #2F3941':'0'; t.textContent=open?'Protokoll ausblenden':'Protokoll anzeigen'; }; lg.parentNode.insertBefore(t,lg); }
 function showPrep(ready){
   const box=$('#xcr-prep'); box.hidden=false;
+  collapseLog(); const dg=$('#xcr-diag'); if(dg) dg.remove(); $('#xcr-actions').querySelectorAll('button').forEach(b=>{ if(/testen|holen/.test(b.textContent)) b.remove(); });
+  setTimeout(()=>{ try{ box.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){} },50);
   const remembered=GM_getValue('gliders',{});
   const known={}; inDb.forEach(x=>{ if(x.glider) known[x.pilot]=known[x.pilot]||{glider:x.glider,cls:x.en_class}; });
   const pilots=[...new Set(ready.map(f=>f.igc.pilot))].sort((a,b)=>a.localeCompare(b));
