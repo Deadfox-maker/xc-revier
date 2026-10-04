@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://deadfox-maker.github.io/xc-revier/
-// @version      1.5
+// @version      1.6
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -133,7 +133,7 @@ async function check(){
   // Durchgang 1: ganzer Name gleich. Durchgang 2: ein Namensbestandteil gleich. Jeweils gleicher Tag und Aufzeichnungsbeginn
   // (Spiel, UTC) zwischen 90 min vor und 5 min nach der XContest-Startzeit (UTC+1 oder UTC+2).
   for(const f of flights){ if(f.status==='ok') continue; const x=pick(f,(f,x)=>norm(f.xcPilot)===norm(x.pilot)); if(x){ used.add(x); f.status='ok'; f.why='derselbe Flug, ohne XContest-Link gespeichert'; f.twin=x; ok++; } }
-  for(const f of flights){ if(f.status==='ok') continue; const a=tok(f.xcPilot); const x=pick(f,(f,x)=>{ const b=tok(x.pilot); return a.some(w=>b.includes(w)); }); if(x){ used.add(x); f.status='ok'; f.why='vermutlich derselbe Flug (im Spiel als "'+x.pilot+'")'; f.twin=x; ok++; } else f.status='todo'; }
+  for(const f of flights){ if(f.status==='ok') continue; const a=tok(f.xcPilot); const x=pick(f,(f,x)=>{ const b=tok(x.pilot); return a.some(w=>b.includes(w)); }); if(x){ used.add(x); f.status='ok'; f.why='vermutlich derselbe Flug (im Spiel als "'+x.pilot+'"), Link wird erst nach Trackvergleich nachgetragen'; ok++; } else f.status='todo'; }
   flights.forEach(mark);
   for(const f of flights){ if(f.twin) linkTwin(f); }
   const todo=flights.filter(f=>f.status==='todo');
@@ -164,20 +164,44 @@ async function findTwin(igc){
   return null; }
 async function linkTwin(f){ const x=f.twin; if(!x||x.linked) return; x.linked=true;
   try{ const r=await gm(cfg.supabaseUrl+'/rest/v1/rpc/set_xc_url',{method:'POST',headers:dbH(),body:JSON.stringify({code:st.code,p_date:x.date,p_time:x.time,p_pilot:x.pilot,p_url:f.url})}); if(r.ok&&r.text==='true') f.why=f.why.replace(/^vermutlich /,'')+' · Link nachgetragen'; mark(f); }catch(e){} }
+// ---------- Flugseite: erst roh laden, sonst im versteckten Rahmen (XContest baut die Seite per JavaScript) ----------
+const IGC_RX=/(?:href|src)=["']([^"']*(?:track\.php[^"']*|\.igc(?:\?[^"']*)?))["']/i;
+const IGC_SEL='a[href*="track.php"],a[href$=".igc"],a[href*=".igc?"],a[href*="/igc/"]';
+let frame=null;
+function getFrame(){ if(frame&&frame.isConnected) return frame; frame=document.createElement('iframe'); frame.id='xcr-frame'; frame.style.cssText='width:100%;height:0;border:0;display:block;background:#fff;border-radius:4px;margin-bottom:6px'; $('#xcr-body').insertBefore(frame,$('#xcr-log')); return frame; }
+function showFrame(on){ getFrame().style.height=on?'460px':'0'; }
+const frameDoc=()=>{ try{ const d=getFrame().contentDocument; return d&&d.URL!=='about:blank'?d:null; }catch(e){ return null; } };
+async function linkViaFrame(f){
+  const fr=getFrame(); fr.src='about:blank'; await sleep(150); fr.src=f.url;
+  let shown=false, limit=45000; const t0=Date.now(); let title='';
+  while(Date.now()-t0<limit){
+    await sleep(300); const d=frameDoc(); if(!d) continue; title=d.title||'';
+    const a=d.querySelector(IGC_SEL); if(a){ if(shown) showFrame(false); return new URL(a.getAttribute('href'),f.url).href; }
+    const html=d.documentElement?d.documentElement.outerHTML:'';
+    if(isVerify(html)){ if(!shown){ shown=true; showFrame(true); log('XContest zeigt eine Prüfung. Bitte hier im Kasten lösen, danach geht es von selbst weiter.','#E6A03B'); limit=240000; } continue; }
+    if(d.readyState==='complete'&&isLogin(html)) throw Object.assign(new Error('nicht eingeloggt'),{login:true});
+  }
+  if(shown) showFrame(false);
+  if(!frameDoc()) throw new Error('Flugseite lässt sich nicht im Rahmen laden');
+  throw new Error('kein IGC-Link (vom Piloten gesperrt?)'+(title?' · Seite: '+title.slice(0,60):''));
+}
+async function fetchIgcText(igcUrl){
+  const r=await gm(igcUrl,{timeout:60000});
+  if(r.ok&&!isHtml(r.text)) return r.text;
+  // Rückfall: aus dem Rahmen heraus laden (gleiche Sitzung wie die Seite)
+  const d=frameDoc(); if(d&&d.defaultView&&d.defaultView.fetch){ try{ const rr=await d.defaultView.fetch(igcUrl,{credentials:'include'}); const t=await rr.text(); if(rr.ok&&!isHtml(t)) return t; }catch(e){} }
+  if(!r.ok) throw new Error('IGC nicht geladen ('+r.status+')');
+  if(isVerify(r.text)) throw Object.assign(new Error('Verifizierung nötig'),{verify:true});
+  if(isLogin(r.text)) throw Object.assign(new Error('nicht eingeloggt'),{login:true});
+  throw new Error('IGC-Link liefert eine Webseite statt der Datei');
+}
 async function fetchOne(f){
   f.status='busy'; mark(f);
-  const page=await gm(f.url,{timeout:40000});
-  const m=page.text.match(/href="([^"]*(?:track\.php[^"]*|\.igc[^"]*))"/i);
-  if(!m){
-    if(isVerify(page.text)) throw Object.assign(new Error('Verifizierung nötig'),{verify:true});
-    if(!page.ok) throw new Error('Seite nicht geladen ('+page.status+')');
-    if(isLogin(page.text)) throw Object.assign(new Error('nicht eingeloggt'),{login:true});
-    throw new Error('kein IGC-Link (vom Piloten gesperrt?)');
-  }
-  const igcUrl=new URL(m[1].replace(/&amp;/g,'&'),f.url).href;
-  const igc=await gm(igcUrl,{timeout:60000});
-  if(!igc.ok) throw new Error('IGC nicht geladen ('+igc.status+')');
-  if(isHtml(igc.text)){ if(isVerify(igc.text)) throw Object.assign(new Error('Verifizierung nötig'),{verify:true}); if(isLogin(igc.text)) throw Object.assign(new Error('nicht eingeloggt'),{login:true}); throw new Error('IGC-Link liefert eine Webseite statt der Datei'); }
+  let igcUrl=null;
+  try{ const page=await gm(f.url,{timeout:40000}); const m=page.ok?page.text.match(IGC_RX):null; if(m) igcUrl=new URL(m[1].replace(/&amp;/g,'&'),f.url).href; }catch(e){}
+  if(!igcUrl) igcUrl=await linkViaFrame(f);
+  const text=await fetchIgcText(igcUrl);
+  const igc={text};
   const p=parseIGC(igc.text); const bad=validate(p.coords); if(bad) throw new Error(bad);
   if(!p.date) p.date=f.date;
   const twin=await findTwin(p); if(twin){ f.twin=twin; f.status='ok'; f.why='schon im Spiel als "'+twin.pilot+'" (gleicher Track)'; mark(f); linkTwin(f); return; }
