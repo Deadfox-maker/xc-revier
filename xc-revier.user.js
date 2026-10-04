@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://deadfox-maker.github.io/xc-revier/
-// @version      2.1
+// @version      2.2
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -186,7 +186,7 @@ async function linkViaWindow(f){
     let d=null; try{ d=w.document; }catch(e){}
     if(!d) continue;
     const url=d.URL.split('#')[0]; const fresh=url!==prev&&url!=='about:blank';
-    if(fresh){ const a=d.querySelector(IGC_SEL); if(a){ if(warned){ warned.textContent='✓ Prüfung erledigt'; warned.style.color='#3FC29A'; } lastAnchor=a; return new URL(a.getAttribute('href'),url).href; } }
+    if(fresh){ const a=d.querySelector(IGC_SEL)||[...d.querySelectorAll('a')].find(x=>/\bIGC\b/i.test(x.textContent)&&!/XC/i.test(x.textContent.replace(/IGC/i,''))); if(a){ if(warned){ warned.textContent='✓ Prüfung erledigt'; warned.style.color='#3FC29A'; } lastAnchor=a; const h=a.getAttribute('href')||''; return /^(#|javascript:|$)/i.test(h)?url+'#igc-klick':new URL(h,url).href; } }
     if(winVerify(d)){ if(!warned){ warned=log('⚠ XContest zeigt im Hilfsfenster eine Prüfung. Bitte dort lösen, danach geht es von selbst weiter.','#E6A03B'); maxN=4*300; } n=Math.min(n,maxN-4*60); continue; }
     if(warned){ warned.textContent='✓ Prüfung erledigt'; warned.style.color='#3FC29A'; warned=null; }
     if(!fresh||d.readyState!=='complete') continue;
@@ -203,9 +203,9 @@ function showDiag(){ if($('#xcr-diag')) return; const b=document.createElement('
 const looksIgc=t=>typeof t==='string'&&/^A[A-Z0-9]{3}/m.test(t.slice(0,300))&&/^B\d{6}/m.test(t);
 // Datei abholen: 1. aus dem Hilfsfenster (mit Login-Cookies), 2. über die Erweiterung, 3. Klick auf den Link wie beim Lesezeichen, Datei dabei abfangen
 async function fetchIgcText(igcUrl,a){
-  const tried=[]; const w=(win&&!win.closed)?win:null;
-  if(w){ try{ const rr=await w.fetch(igcUrl,{credentials:'include'}); const t=await rr.text(); if(rr.ok&&looksIgc(t)) return t; tried.push('Fenster '+rr.status+(rr.ok?' (keine IGC-Datei)':'')); }catch(e){ tried.push('Fenster: '+e.message); } }
-  try{ const r=await gm(igcUrl,{timeout:60000}); if(r.ok&&looksIgc(r.text)) return r.text; tried.push('Erweiterung '+r.status+(r.ok?' (keine IGC-Datei)':'')); if(r.ok&&isHtml(r.text)&&isLogin(r.text)) tried.push('Login-Seite'); }catch(e){ tried.push('Erweiterung: '+e.message); }
+  const tried=[]; const w=(win&&!win.closed)?win:null; const clickOnly=/#igc-klick$/.test(igcUrl);
+  if(w&&!clickOnly){ try{ const rr=await w.fetch(igcUrl,{credentials:'include'}); const t=await rr.text(); if(rr.ok&&looksIgc(t)) return t; tried.push('Fenster '+rr.status+(rr.ok?' (keine IGC-Datei)':'')); }catch(e){ tried.push('Fenster: '+e.message); } }
+  if(!clickOnly) try{ const r=await gm(igcUrl,{timeout:60000}); if(r.ok&&looksIgc(r.text)) return r.text; tried.push('Erweiterung '+r.status+(r.ok?' (keine IGC-Datei)':'')); if(r.ok&&isHtml(r.text)&&isLogin(r.text)) tried.push('Login-Seite'); }catch(e){ tried.push('Erweiterung: '+e.message); }
   if(w&&a){ const t=await clickCapture(w,a); if(t) return t; tried.push('Klick ohne Daten'); }
   throw new Error('IGC nicht geladen ('+tried.join(' · ')+') · Link: '+igcUrl.slice(0,90));
 }
