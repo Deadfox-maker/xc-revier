@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://deadfox-maker.github.io/xc-revier/
-// @version      1.4
+// @version      1.5
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -99,7 +99,9 @@ function validate(c){ let mx=0; for(let i=0;i<c.length;i++){ const [lo,la]=c[i];
 function dp(pts,tol){ if(pts.length<3) return pts; let dmax=0,idx=0; const [x1,y1]=pts[0],[x2,y2]=pts[pts.length-1]; const L=Math.hypot(y2-y1,x2-x1)||1e-12;
   for(let i=1;i<pts.length-1;i++){ const [x,y]=pts[i]; const d=Math.abs((y2-y1)*x-(x2-x1)*y+x2*y1-y2*x1)/L; if(d>dmax){dmax=d;idx=i;} }
   if(dmax>tol){ const a=dp(pts.slice(0,idx+1),tol), b=dp(pts.slice(idx),tol); return a.slice(0,-1).concat(b); } return [pts[0],pts[pts.length-1]]; }
-const isVerify=t=>/verif|captcha|robot|checking your browser|just a moment|cf-turnstile|h-captcha|g-recaptcha/i.test(t.slice(0,4000)+t.slice(-4000));
+const visibleText=h=>String(h).replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<head[\s\S]*?<\/head>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
+const isVerify=h=>{ if(/cf-turnstile|h-captcha|g-recaptcha|id="challenge-form"|challenge-platform/i.test(h)) return true; const t=visibleText(h).slice(0,3000); return /verify (that )?you are (a )?human|are you (a )?human|checking your browser|just a moment|i am not a robot|verifizier|ověř/i.test(t); };
+const isHtml=t=>/^\s*</.test(t)||/<html|<!doctype/i.test(t.slice(0,500));
 const isLogin=t=>/type="password"/i.test(t)&&!/track\.php/.test(t);
 
 // ---------- Abgleich ----------
@@ -165,15 +167,17 @@ async function linkTwin(f){ const x=f.twin; if(!x||x.linked) return; x.linked=tr
 async function fetchOne(f){
   f.status='busy'; mark(f);
   const page=await gm(f.url,{timeout:40000});
-  if(isVerify(page.text)){ throw Object.assign(new Error('Verifizierung nötig'),{verify:true}); }
-  if(!page.ok) throw new Error('Seite nicht geladen ('+page.status+')');
-  if(isLogin(page.text)) throw Object.assign(new Error('nicht eingeloggt'),{login:true});
   const m=page.text.match(/href="([^"]*(?:track\.php[^"]*|\.igc[^"]*))"/i);
-  if(!m) throw new Error('kein IGC-Link (vom Piloten gesperrt?)');
+  if(!m){
+    if(isVerify(page.text)) throw Object.assign(new Error('Verifizierung nötig'),{verify:true});
+    if(!page.ok) throw new Error('Seite nicht geladen ('+page.status+')');
+    if(isLogin(page.text)) throw Object.assign(new Error('nicht eingeloggt'),{login:true});
+    throw new Error('kein IGC-Link (vom Piloten gesperrt?)');
+  }
   const igcUrl=new URL(m[1].replace(/&amp;/g,'&'),f.url).href;
   const igc=await gm(igcUrl,{timeout:60000});
   if(!igc.ok) throw new Error('IGC nicht geladen ('+igc.status+')');
-  if(isVerify(igc.text)&&!/^A/m.test(igc.text)) throw Object.assign(new Error('Verifizierung nötig'),{verify:true});
+  if(isHtml(igc.text)){ if(isVerify(igc.text)) throw Object.assign(new Error('Verifizierung nötig'),{verify:true}); if(isLogin(igc.text)) throw Object.assign(new Error('nicht eingeloggt'),{login:true}); throw new Error('IGC-Link liefert eine Webseite statt der Datei'); }
   const p=parseIGC(igc.text); const bad=validate(p.coords); if(bad) throw new Error(bad);
   if(!p.date) p.date=f.date;
   const twin=await findTwin(p); if(twin){ f.twin=twin; f.status='ok'; f.why='schon im Spiel als "'+twin.pilot+'" (gleicher Track)'; mark(f); linkTwin(f); return; }
