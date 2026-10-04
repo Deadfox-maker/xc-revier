@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://deadfox-maker.github.io/xc-revier/
-// @version      1.9
+// @version      2.0
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -172,7 +172,7 @@ const IGC_SEL='a[href*="track.php"],a[href$=".igc"],a[href*=".igc?"],a[href*="/i
 let win=null, lastPage='';
 function getWin(){ if(win&&!win.closed) return win; win=window.open('about:blank','xcrevier','width=900,height=700'); return win; }
 // Prüfungserkennung wie im Lesezeichen: Titel und sichtbarer Text, nicht der Quelltext
-const winVerify=d=>{ try{ const t=(d.title+' '+(d.body?d.body.innerText.slice(0,600):'')).toLowerCase(); if(/verif|captcha|robot|human|mensch|checking your browser|just a moment|challenge/.test(t)) return true; return [...d.querySelectorAll('iframe[src*="captcha"],iframe[src*="challenge"],#challenge-form,.cf-turnstile,.g-recaptcha,.h-captcha')].some(e=>e.offsetWidth>0&&e.offsetHeight>0); }catch(e){ return false; } };
+const winVerify=d=>{ try{ const t=(d.title+' '+(d.body?d.body.innerText.slice(0,600):'')).toLowerCase(); if(/verif|captcha|robot|human|mensch|checking your browser|just a moment|challenge/.test(t)) return true; return [...d.querySelectorAll('iframe[src*="captcha"],iframe[src*="challenge"],iframe[src*="challenges.cloudflare.com"],#challenge-form,.cf-turnstile,.g-recaptcha,.h-captcha')].some(e=>e.offsetWidth>60&&e.offsetHeight>40); }catch(e){ return false; } };
 const winLogin=d=>{ try{ return !!d.querySelector('input[name*="login"][type="password"],form[action*="login"] input[type="password"]'); }catch(e){ return false; } };
 async function linkViaWindow(f){
   const w=getWin(); if(!w) throw new Error('Hilfsfenster blockiert: bitte Popups für xcontest.org erlauben und nochmal klicken');
@@ -191,7 +191,7 @@ async function linkViaWindow(f){
     if(!fresh||d.readyState!=='complete') continue;
     title=d.title||'';
     if(winLogin(d)) throw Object.assign(new Error('nicht eingeloggt'),{login:true});
-    if(++settled>32) break; // 8 s auf der fertigen Seite ohne IGC-Link
+    if(++settled>60) break; // 15 s auf der fertigen Seite ohne IGC-Link (XContest lädt den Flug erst nach der Turnstile-Prüfung nach)
   }
   try{ lastPage=w.document.documentElement.outerHTML; }catch(e){}
   showDiag();
