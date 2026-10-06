@@ -335,7 +335,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <div class="hdr-r"><select id="langSel" class="datebtn langsel" title="Sprache / Language / Idioma"><option value="de">DE</option><option value="en">EN</option><option value="es">ES</option></select><select id="seasonSel" class="datebtn seasonsel" title="Saison (1.10. bis 30.9.)"></select><select id="clubSel" class="datebtn clubsel" title="Club wählen"></select><button type="button" class="btn hbtn" id="introBtn" title="Intro-Video">▶ <span class="hl-txt">Intro</span></button><button type="button" class="btn hbtn" id="newsBtn" title="Was ist neu">🆕 <span class="hl-txt">Was ist neu</span></button><button type="button" class="btn hbtn" id="msgBtn" title="Kontakt">✉ <span class="hl-txt">Kontakt</span><span class="badge" id="msgBadge" hidden></span></button><span class="lbl" id="version">v84 (06.10. 17:54)</span></div>
+  <div class="hdr-r"><select id="langSel" class="datebtn langsel" title="Sprache / Language / Idioma"><option value="de">DE</option><option value="en">EN</option><option value="es">ES</option></select><select id="seasonSel" class="datebtn seasonsel" title="Saison (1.10. bis 30.9.)"></select><select id="clubSel" class="datebtn clubsel" title="Club wählen"></select><button type="button" class="btn hbtn" id="introBtn" title="Intro-Video">▶ <span class="hl-txt">Intro</span></button><button type="button" class="btn hbtn" id="newsBtn" title="Was ist neu">🆕 <span class="hl-txt">Was ist neu</span></button><button type="button" class="btn hbtn" id="msgBtn" title="Kontakt">✉ <span class="hl-txt">Kontakt</span><span class="badge" id="msgBadge" hidden></span></button><span class="lbl" id="version">v85 (06.10. 19:06)</span></div>
   <button type="button" class="mgear" id="mGear" aria-label="Hochladen und Einstellungen">⚙</button>
 </header>
 <div class="modal" id="modal" hidden><div class="modal-bg" id="modalBg"></div><div class="modal-box"><div class="modal-hd"><h2 id="modalTitle"></h2><button type="button" class="btn" id="modalClose">✕</button></div><div class="modal-body" id="modalBody"></div></div></div>
@@ -2315,6 +2315,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     render(); loadLog(); refreshAdminUI(); }
 
   const CHANGELOG=[
+    {v:'85',d:'06.10.2026',t:['Beim Speichern eines Ergebnisses steht jetzt der genaue Grund der Datenbank dabei (zu groß, zu oft, Code)']},
     {v:'84',d:'06.10.2026',t:['Neuer Knopf ▶ Intro oben: 23-Sekunden-Video, was das Spiel ist','Karte: Startausschnitt zeigt das Hauptrevier groß (alles im Umkreis von 50 km um die Mitte der Reviere). Urlaubsflüge in Spanien oder Italien bleiben auf der Karte, ziehen den Ausschnitt aber nicht mehr auf halb Europa auf']},
     {v:'83',d:'04.10.2026',t:['Schmale Fenster (unter 1400 Pixel, z. B. halber Monitor): Regeln rutschen unter die Karte, Karte und Flugliste bekommen mehr Platz','XContest-Skript 1.3: liest die nachgeladene Flugliste zuverlässig, erkennt von Hand geladene Flüge auch bei frühem Aufzeichnungsbeginn']},
     {v:'82',d:'04.10.2026',t:['Browser-Skript für XContest (Violentmonkey): zeigt auf der Tagesliste, welche Flüge schon im Spiel sind, holt fehlende IGC-Dateien, fragt vorher Schirm und Klasse ab und lädt direkt hoch','Flugliste: Link zum Flug auf XContest, wenn vorhanden']},
@@ -2796,14 +2797,16 @@ svg.leaflet-zoom-animated{will-change:transform}
     const enc=d=>JSON.stringify({code,payload:d,n:state.flights.length,p_club:state.club,p_season:state.season},(k,v)=>typeof v==='number'&&!Number.isInteger(v)?Math.round(v*1e6)/1e6:v);
     let body=enc(data);
     if(body.length>9000000){ data.cp=null; body=enc(data); }
+    const msgOf=async r=>{ let m=''; try{ const j=await r.clone().json(); m=j.message||j.error||''; }catch(e){ try{ m=await r.clone().text(); }catch(x){} } return (m||('HTTP '+r.status)).slice(0,160); };
     let r=await fetch(cfg.supabaseUrl+'/rest/v1/rpc/save_result',{method:'POST',headers:dbHeaders(),body});
-    if(!r.ok&&data.cp){ let m=''; try{ m=(await r.clone().json()).message||''; }catch(e){} if(/groß|large|size/i.test(m)){ data.cp=null; r=await fetch(cfg.supabaseUrl+'/rest/v1/rpc/save_result',{method:'POST',headers:dbHeaders(),body:enc(data)}); } }
+    if(!r.ok&&data.cp){ const m=await msgOf(r); if(/groß|large|size/i.test(m)){ data.cp=null; r=await fetch(cfg.supabaseUrl+'/rest/v1/rpc/save_result',{method:'POST',headers:dbHeaders(),body:enc(data)}); } }
+    saveResult.lastError=r.ok?'':(await msgOf(r))+' · Größe '+Math.round(body.length/1e6*10)/10+' MB';
     return r.ok;
   }
   async function recalcAndSave(code){
     state.excludeHidden=false; $('#exclHidden').checked=false;
     const done=await refresh(); if(!done) return false;
-    if(code){ if(busyOn) busy('Speichere Ergebnis für alle Besucher …',null); const ok=await saveResult(code); showErr(ok?'Ergebnis gespeichert, Besucher sehen es ab jetzt sofort.':'Ergebnis konnte nicht gespeichert werden (Club-Code prüfen, SQL-Update ausgeführt?).'); }
+    if(code){ if(busyOn) busy('Speichere Ergebnis für alle Besucher …',null); const ok=await saveResult(code); showErr(ok?'Ergebnis gespeichert, Besucher sehen es ab jetzt sofort.':'Ergebnis konnte nicht gespeichert werden: '+(saveResult.lastError||'unbekannter Fehler')); }
     return true;
   }
   let recalcT=null, recalcMsgs=[];
@@ -2817,7 +2820,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     const code=$('#clubCode').value.trim(); if(!code){ showErr('Für "Neu berechnen" den Code eingeben.'); return; }
     try{ localStorage.setItem('xc-club-code',code); }catch(e){}
     $('#recalcBtn').disabled=true;
-    if(state.result&&state.result.fresh&&state.result.sig===inputSig()){ busy('Ergebnis ist aktuell, speichere für alle Besucher …',null); const ok=await saveResult(code); busyDone(ok?'Ergebnis gespeichert, Besucher sehen es ab jetzt sofort.':''); if(!ok) showErr('Ergebnis konnte nicht gespeichert werden (Code prüfen, SQL-Update 7 ausgeführt?).'); $('#recalcBtn').disabled=false; return; }
+    if(state.result&&state.result.fresh&&state.result.sig===inputSig()){ busy('Ergebnis ist aktuell, speichere für alle Besucher …',null); const ok=await saveResult(code); busyDone(ok?'Ergebnis gespeichert, Besucher sehen es ab jetzt sofort.':''); if(!ok) showErr('Ergebnis konnte nicht gespeichert werden: '+(saveResult.lastError||'unbekannter Fehler')); $('#recalcBtn').disabled=false; return; }
     checkpoint=null; busy('Berechne alles neu …',0.1); const done=await recalcAndSave(code); if(!done){ $('#recalcBtn').disabled=false; return; } const m=$('#err').textContent; if(/nicht/.test(m)) busyDone(''); else { busyDone(m); showErr(''); } $('#recalcBtn').disabled=false;
   });
 
