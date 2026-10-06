@@ -49,6 +49,7 @@ html[lang=es] .tabs button,html[lang=en] .tabs button{font-size:13px;letter-spac
 .modal-box{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:8px;width:min(680px,94vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.5)}
 .modal-hd{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
 .modal-body{padding:12px 14px;overflow-y:auto;font-size:14px}
+.modal-body video{display:block;max-height:74vh;max-width:100%;margin:0 auto;border-radius:6px;background:#000}
 .modal-body .ver{margin:0 0 14px}
 .modal-body .ver h3{font-family:var(--font-display);font-size:17px;margin:0 0 4px;text-transform:none}
 .modal-body .ver ul{margin:0;padding-left:18px} .modal-body .ver li{margin:2px 0}
@@ -334,7 +335,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <div class="hdr-r"><select id="langSel" class="datebtn langsel" title="Sprache / Language / Idioma"><option value="de">DE</option><option value="en">EN</option><option value="es">ES</option></select><select id="seasonSel" class="datebtn seasonsel" title="Saison (1.10. bis 30.9.)"></select><select id="clubSel" class="datebtn clubsel" title="Club wählen"></select><button type="button" class="btn hbtn" id="newsBtn" title="Was ist neu">🆕 <span class="hl-txt">Was ist neu</span></button><button type="button" class="btn hbtn" id="msgBtn" title="Kontakt">✉ <span class="hl-txt">Kontakt</span><span class="badge" id="msgBadge" hidden></span></button><span class="lbl" id="version">v84 (06.10. 17:45)</span></div>
+  <div class="hdr-r"><select id="langSel" class="datebtn langsel" title="Sprache / Language / Idioma"><option value="de">DE</option><option value="en">EN</option><option value="es">ES</option></select><select id="seasonSel" class="datebtn seasonsel" title="Saison (1.10. bis 30.9.)"></select><select id="clubSel" class="datebtn clubsel" title="Club wählen"></select><button type="button" class="btn hbtn" id="introBtn" title="Intro-Video">▶ <span class="hl-txt">Intro</span></button><button type="button" class="btn hbtn" id="newsBtn" title="Was ist neu">🆕 <span class="hl-txt">Was ist neu</span></button><button type="button" class="btn hbtn" id="msgBtn" title="Kontakt">✉ <span class="hl-txt">Kontakt</span><span class="badge" id="msgBadge" hidden></span></button><span class="lbl" id="version">v84 (06.10. 17:54)</span></div>
   <button type="button" class="mgear" id="mGear" aria-label="Hochladen und Einstellungen">⚙</button>
 </header>
 <div class="modal" id="modal" hidden><div class="modal-bg" id="modalBg"></div><div class="modal-box"><div class="modal-hd"><h2 id="modalTitle"></h2><button type="button" class="btn" id="modalClose">✕</button></div><div class="modal-body" id="modalBody"></div></div></div>
@@ -642,7 +643,9 @@ svg.leaflet-zoom-animated{will-change:transform}
    "Flüge von": "flights by",
    "nicht geflogen, nur gehalten": "not flown, only held",
    "Dunkel (Esri)": "Dark (Esri)",
-   "Relief farbig": "Coloured relief"
+   "Relief farbig": "Coloured relief",
+   "So funktioniert XC Revier": "How XC Revier works",
+   "Intro-Video": "Intro video"
   },
   "frag": [
    [
@@ -1333,7 +1336,9 @@ svg.leaflet-zoom-animated{will-change:transform}
    "Flüge von": "vuelos de",
    "nicht geflogen, nur gehalten": "sin volar, solo mantenido",
    "Dunkel (Esri)": "Oscuro (Esri)",
-   "Relief farbig": "Relieve en color"
+   "Relief farbig": "Relieve en color",
+   "So funktioniert XC Revier": "Así funciona XC Revier",
+   "Intro-Video": "Vídeo de introducción"
   },
   "frag": [
    [
@@ -2310,7 +2315,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     render(); loadLog(); refreshAdminUI(); }
 
   const CHANGELOG=[
-    {v:'84',d:'06.10.2026',t:['Karte: Startausschnitt zeigt das Hauptrevier groß (alles im Umkreis von 50 km um die Mitte der Reviere). Urlaubsflüge in Spanien oder Italien bleiben auf der Karte, ziehen den Ausschnitt aber nicht mehr auf halb Europa auf']},
+    {v:'84',d:'06.10.2026',t:['Neuer Knopf ▶ Intro oben: 23-Sekunden-Video, was das Spiel ist','Karte: Startausschnitt zeigt das Hauptrevier groß (alles im Umkreis von 50 km um die Mitte der Reviere). Urlaubsflüge in Spanien oder Italien bleiben auf der Karte, ziehen den Ausschnitt aber nicht mehr auf halb Europa auf']},
     {v:'83',d:'04.10.2026',t:['Schmale Fenster (unter 1400 Pixel, z. B. halber Monitor): Regeln rutschen unter die Karte, Karte und Flugliste bekommen mehr Platz','XContest-Skript 1.3: liest die nachgeladene Flugliste zuverlässig, erkennt von Hand geladene Flüge auch bei frühem Aufzeichnungsbeginn']},
     {v:'82',d:'04.10.2026',t:['Browser-Skript für XContest (Violentmonkey): zeigt auf der Tagesliste, welche Flüge schon im Spiel sind, holt fehlende IGC-Dateien, fragt vorher Schirm und Klasse ab und lädt direkt hoch','Flugliste: Link zum Flug auf XContest, wenn vorhanden']},
     {v:'81',d:'03.10.2026',t:['Neue Hintergrundkarte "Relief farbig": Höhenfarben wie bei Burnair, aus freien Höhendaten im Browser gerendert, mit Schummerung und Ortsnamen']},
@@ -2331,9 +2336,10 @@ svg.leaflet-zoom-animated{will-change:transform}
     {v:'1 bis 20',d:'26. bis 27.09.2026',t:['Erster Prototyp: IGC laden, Korridor 25 m, Schleifen füllen, Übernahme durch spätere Flüge','Ranglisten Tag, Monat, Jahr, Gehalten','Hosting auf GitHub Pages, XContest-Bookmarklet zum Holen der IGC-Dateien']}
   ];
   function openModal(title,html){ $('#modalTitle').textContent=trText(title); $('#modalBody').innerHTML=html; localize($('#modalBody')); $('#modal').hidden=false; document.body.style.overflow='hidden'; }
-  function closeModal(){ $('#modal').hidden=true; document.body.style.overflow=''; }
+  function closeModal(){ const v=$('#modalBody video'); if(v){ try{ v.pause(); }catch(e){} } $('#modal').hidden=true; document.body.style.overflow=''; }
   $('#modalClose').addEventListener('click',closeModal); $('#modalBg').addEventListener('click',closeModal);
   document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&!$('#modal').hidden) closeModal(); });
+  $('#introBtn').addEventListener('click',()=>{ openModal('So funktioniert XC Revier','<video controls playsinline preload="metadata" poster="intro.jpg" src="intro.mp4"></video>'); const v=$('#modalBody video'); if(v){ v.play().catch(()=>{}); } });
   $('#newsBtn').addEventListener('click',()=>openModal('Was ist neu',CHANGELOG.map(c=>`<div class="ver"><h3>Version ${esc(c.v)} <span class="unit">${esc(c.d)}</span></h3><ul>${c.t.map(t=>`<li>${esc(t)}</li>`).join('')}</ul></div>`).join('')));
 
   // Kontakt
