@@ -334,7 +334,7 @@ svg.leaflet-zoom-animated{will-change:transform}
 
 <header>
   <h1>XC Revier <small>Fläche erfliegen, halten, verlieren</small></h1>
-  <div class="hdr-r"><select id="langSel" class="datebtn langsel" title="Sprache / Language / Idioma"><option value="de">DE</option><option value="en">EN</option><option value="es">ES</option></select><select id="seasonSel" class="datebtn seasonsel" title="Saison (1.10. bis 30.9.)"></select><select id="clubSel" class="datebtn clubsel" title="Club wählen"></select><button type="button" class="btn hbtn" id="newsBtn" title="Was ist neu">🆕 <span class="hl-txt">Was ist neu</span></button><button type="button" class="btn hbtn" id="msgBtn" title="Kontakt">✉ <span class="hl-txt">Kontakt</span><span class="badge" id="msgBadge" hidden></span></button><span class="lbl" id="version">v83 (04.10. 17:47)</span></div>
+  <div class="hdr-r"><select id="langSel" class="datebtn langsel" title="Sprache / Language / Idioma"><option value="de">DE</option><option value="en">EN</option><option value="es">ES</option></select><select id="seasonSel" class="datebtn seasonsel" title="Saison (1.10. bis 30.9.)"></select><select id="clubSel" class="datebtn clubsel" title="Club wählen"></select><button type="button" class="btn hbtn" id="newsBtn" title="Was ist neu">🆕 <span class="hl-txt">Was ist neu</span></button><button type="button" class="btn hbtn" id="msgBtn" title="Kontakt">✉ <span class="hl-txt">Kontakt</span><span class="badge" id="msgBadge" hidden></span></button><span class="lbl" id="version">v84 (06.10. 17:45)</span></div>
   <button type="button" class="mgear" id="mGear" aria-label="Hochladen und Einstellungen">⚙</button>
 </header>
 <div class="modal" id="modal" hidden><div class="modal-bg" id="modalBg"></div><div class="modal-box"><div class="modal-hd"><h2 id="modalTitle"></h2><button type="button" class="btn" id="modalClose">✕</button></div><div class="modal-body" id="modalBody"></div></div></div>
@@ -2310,6 +2310,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     render(); loadLog(); refreshAdminUI(); }
 
   const CHANGELOG=[
+    {v:'84',d:'06.10.2026',t:['Karte: Startausschnitt zeigt das Hauptrevier groß (alles im Umkreis von 50 km um die Mitte der Reviere). Urlaubsflüge in Spanien oder Italien bleiben auf der Karte, ziehen den Ausschnitt aber nicht mehr auf halb Europa auf']},
     {v:'83',d:'04.10.2026',t:['Schmale Fenster (unter 1400 Pixel, z. B. halber Monitor): Regeln rutschen unter die Karte, Karte und Flugliste bekommen mehr Platz','XContest-Skript 1.3: liest die nachgeladene Flugliste zuverlässig, erkennt von Hand geladene Flüge auch bei frühem Aufzeichnungsbeginn']},
     {v:'82',d:'04.10.2026',t:['Browser-Skript für XContest (Violentmonkey): zeigt auf der Tagesliste, welche Flüge schon im Spiel sind, holt fehlende IGC-Dateien, fragt vorher Schirm und Klasse ab und lädt direkt hoch','Flugliste: Link zum Flug auf XContest, wenn vorhanden']},
     {v:'81',d:'03.10.2026',t:['Neue Hintergrundkarte "Relief farbig": Höhenfarben wie bei Burnair, aus freien Höhendaten im Browser gerendert, mit Schummerung und Ortsnamen']},
@@ -2487,6 +2488,17 @@ svg.leaflet-zoom-animated{will-change:transform}
     
     overlay=L.layerGroup().addTo(map);
   }
+  // Ausschnitt: Mitte aller Flächen (Median), dann alles im Umkreis von 50 km einpassen. Ferne Flüge (Urlaub) bleiben auf der Karte, bestimmen aber nicht den Ausschnitt.
+  function partBounds(geo){ const out=[]; const g=geo&&geo.geometry?geo.geometry:geo; if(!g) return out;
+    const polys=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
+    for(const poly of polys){ const ring=poly[0]; if(!ring||!ring.length) continue; const b=L.latLngBounds(ring.map(c=>[c[1],c[0]])); if(b.isValid()) out.push(b); }
+    return out; }
+  function focusBounds(bs){ const union=a=>{ let b=L.latLngBounds(a[0]); a.slice(1).forEach(x=>b=b.extend(x)); return b; };
+    if(bs.length<3) return union(bs);
+    const cs=bs.map(b=>b.getCenter()); const lats=cs.map(c=>c.lat).sort((a,b)=>a-b), lons=cs.map(c=>c.lng).sort((a,b)=>a-b);
+    const med=L.latLng(lats[lats.length>>1],lons[lons.length>>1]);
+    const near=bs.filter(b=>med.distanceTo(b.getCenter())<50000);
+    return union(near.length?near:bs); }
   function renderMap(){
     if(!map) return;
     overlay.clearLayers(); for(const k in terrLayers) delete terrLayers[k];
@@ -2494,7 +2506,7 @@ svg.leaflet-zoom-animated{will-change:transform}
     const addLayer=(p,geo,tip)=>{ const c=hexOf(p);
         const lyr=L.geoJSON(geo,{interactive:true,bubblingMouseEvents:false,style:{color:c,weight:1.5,fillColor:c,fillOpacity:.4}}).bindTooltip(tip,{sticky:true,direction:'top',offset:[0,-8]});
         lyr.on('mouseover',()=>setHL(p,true)); lyr.on('mouseout',()=>setHL(null)); lyr.on('click',()=>{ state.pinned=state.pinned===p?null:p; setHL(p,true); });
-        lyr.addTo(overlay); bounds.push(lyr.getBounds()); (terrLayers[p]=terrLayers[p]||L.featureGroup()).addLayer(lyr); };
+        lyr.addTo(overlay); partBounds(geo).forEach(b=>bounds.push(b)); (terrLayers[p]=terrLayers[p]||L.featureGroup()).addLayer(lyr); };
     let shownFlights=[];
     if(state.flDate){
       shownFlights=state.flights.filter(f=>f.date===state.flDate&&!validate(f)&&!state.hidden.has(f.pilot));
@@ -2509,7 +2521,7 @@ svg.leaflet-zoom-animated{will-change:transform}
         pl.addTo(overlay); bounds.push(pl.getBounds());
     });
     const mk=(state.flDate||'all')+'|'+state.hidden.size+'|'+(shownFlights.length?1:0);
-    if(bounds.length&&mk!==state._mapKey){ let b=bounds[0]; bounds.slice(1).forEach(x=>b=b.extend(x)); map.fitBounds(b,{padding:[20,20]}); state._mapKey=mk; }
+    if(bounds.length&&mk!==state._mapKey){ map.fitBounds(focusBounds(bounds),{padding:[20,20]}); state._mapKey=mk; }
     const pilots=[...new Set(state.flights.map(f=>f.pilot))];
     const q=($('#pSearch').value||'').toLowerCase();
     const sorted=pilots.slice().sort((a,b)=>a.localeCompare(b,'de',{sensitivity:'base'}));
