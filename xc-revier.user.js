@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://xc-revier.github.io/
-// @version      2.7
+// @version      2.8
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -23,7 +23,7 @@
 'use strict';
 if(window.top!==window.self||window.name==='xcrevier') return; // nicht im Rahmen und nicht im eigenen Hilfsfenster laufen
 const GAME='https://xc-revier.github.io/';
-const BUILD='v2.7 · 06.10.2026 18:40';
+const BUILD='v2.8 · 06.10.2026 18:50';
 const RX=/:[^\/]+\/\d{1,2}\.\d{1,2}\.\d{4}\/\d{1,2}:\d{2}/;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const rnd=(a,b)=>a+Math.random()*(b-a);
@@ -207,12 +207,17 @@ const looksIgc=t=>typeof t==='string'&&/^A[A-Z0-9]{3}/m.test(t.slice(0,300))&&/^
 // Abruf aus der Seite im Hilfsfenster heraus: ein kleines Skript dort einfügen, das mit den Rechten und Cookies der Seite lädt
 function pageFetch(w,url){ return new Promise(res=>{
   try{ const d=w.document; let ta=d.getElementById('xcr-igc'); if(!ta){ ta=d.createElement('textarea'); ta.id='xcr-igc'; ta.style.display='none'; d.body.appendChild(ta); } ta.value='';
-    const sc=d.createElement('script'); sc.textContent='(function(){var ta=document.getElementById("xcr-igc");fetch('+JSON.stringify(url)+',{credentials:"include"}).then(function(r){return r.text().then(function(t){ta.value=(r.ok?"OK\\n":"ERR "+r.status+"\\n")+t;});}).catch(function(e){ta.value="ERR 0\\n"+(e&&e.message||e);});})();'; d.body.appendChild(sc); sc.remove();
+    const sc=d.createElement('script'); sc.textContent='(function(){var ta=document.getElementById("xcr-igc");var u='+JSON.stringify(url)+';'+
+      'fetch(u,{credentials:"include"}).then(function(r){return r.text().then(function(t){ta.value=(r.ok?"OK\\n":"ERR "+r.status+"\\n")+t;});}).catch(function(e){'+
+      'var m=(e&&(e.name+": "+e.message))||String(e);'+
+      'Promise.all([fetch(u,{credentials:"include",redirect:"manual"}).then(function(r){return "Umleitung-Test: "+r.type+"/"+r.status;}).catch(function(x){return "Umleitung-Test: Fehler "+x.message;}),'+
+      'fetch(u,{credentials:"include",mode:"no-cors"}).then(function(r){return "Ohne-CORS-Test: "+r.type+"/"+r.status;}).catch(function(x){return "Ohne-CORS-Test: Fehler "+x.message;})]).then(function(a){ta.value="ERR 0\\n"+m+" | "+a.join(" | ");});});})();';
+    d.body.appendChild(sc); sc.remove();
     const t0=Date.now(); const iv=setInterval(()=>{ let v=''; try{ v=ta.value; }catch(e){} if(v){ clearInterval(iv); const nl=v.indexOf('\n'); res({ok:v.startsWith('OK'),status:v.slice(0,nl),text:v.slice(nl+1)}); } else if(Date.now()-t0>45000){ clearInterval(iv); res({ok:false,status:'Zeit',text:''}); } },200);
   }catch(e){ res({ok:false,status:'Fehler: '+e.message,text:''}); } }); }
 async function fetchIgcText(igcUrl,a){
   const tried=[]; const w=(win&&!win.closed)?win:null; const clickOnly=/#igc-klick$/.test(igcUrl);
-  lastVia=''; if(w&&!clickOnly){ const r=await pageFetch(w,igcUrl); if(r.ok&&looksIgc(r.text)){ lastVia='Seite'; return r.text; } tried.push('Seite '+r.status.replace(/^(OK|ERR) ?/,'')+(r.ok?' (keine IGC-Datei)':'')); }
+  lastVia=''; if(w&&!clickOnly){ const r=await pageFetch(w,igcUrl); if(r.ok&&looksIgc(r.text)){ lastVia='Seite'; return r.text; } tried.push('Seite '+r.status.replace(/^(OK|ERR) ?/,'')+(r.ok?' (keine IGC-Datei, Anfang: '+r.text.slice(0,60).replace(/\s+/g,' ')+')':' ('+r.text.slice(0,220)+')')); }
   if(w&&!clickOnly){ try{ const rr=await w.fetch(igcUrl,{credentials:'include'}); const t=await rr.text(); if(rr.ok&&looksIgc(t)){ lastVia='Fenster'; return t; } tried.push('Fenster '+rr.status+(rr.ok?' (keine IGC-Datei)':'')); }catch(e){ tried.push('Fenster: '+e.message); } }
   if(!clickOnly) try{ const r=await gm(igcUrl,{timeout:60000}); if(r.ok&&looksIgc(r.text)){ lastVia='Erweiterung'; return r.text; } tried.push('Erweiterung '+r.status+(r.ok?' (keine IGC-Datei)':'')); if(r.ok&&isHtml(r.text)&&isLogin(r.text)) tried.push('Login-Seite'); }catch(e){ tried.push('Erweiterung: '+e.message); }
   if(w&&a){ const t=await clickCapture(w,a); if(t){ lastVia='Klick'; return t; } tried.push('Klick ohne Daten'); }
