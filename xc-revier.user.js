@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://xc-revier.github.io/
-// @version      2.8
+// @version      2.9
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -23,7 +23,7 @@
 'use strict';
 if(window.top!==window.self||window.name==='xcrevier') return; // nicht im Rahmen und nicht im eigenen Hilfsfenster laufen
 const GAME='https://xc-revier.github.io/';
-const BUILD='v2.8 · 06.10.2026 18:50';
+const BUILD='v2.9 · 06.10.2026 19:00';
 const RX=/:[^\/]+\/\d{1,2}\.\d{1,2}\.\d{4}\/\d{1,2}:\d{2}/;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const rnd=(a,b)=>a+Math.random()*(b-a);
@@ -179,7 +179,10 @@ const winVerify=d=>{ try{ const t=(d.title+' '+(d.body?d.body.innerText.slice(0,
 const winLogin=d=>{ try{ return !!d.querySelector('input[name*="login"][type="password"],form[action*="login"] input[type="password"]'); }catch(e){ return false; } };
 async function linkViaWindow(f){
   const w=getWin(); if(!w) throw new Error('Hilfsfenster blockiert: bitte Popups für xcontest.org erlauben und nochmal klicken');
-  let prev=''; try{ prev=w.document.URL; }catch(e){}
+  // Fenster erst leeren, sonst gilt derselbe Flug beim zweiten Mal nicht als neu geladen
+  try{ w.location.href='about:blank'; }catch(e){}
+  for(let i=0;i<20;i++){ await sleep(100); let u=''; try{ u=w.document.URL; }catch(e){} if(u==='about:blank') break; }
+  const prev='about:blank';
   w.location.href=f.url;
   let n=0, maxN=4*60, settled=0, warned=null, title='';
   while(n++<maxN){
