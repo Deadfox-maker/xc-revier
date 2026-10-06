@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
-// @namespace    https://deadfox-maker.github.io/xc-revier/
-// @version      2.5
+// @namespace    https://xc-revier.github.io/
+// @version      2.6
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -13,17 +13,17 @@
 // @connect      xcontest.org
 // @connect      www.xcontest.org
 // @connect      supabase.co
-// @connect      deadfox-maker.github.io
+// @connect      xc-revier.github.io
 // @run-at       document-idle
-// @updateURL    https://deadfox-maker.github.io/xc-revier/xc-revier.user.js
-// @downloadURL  https://deadfox-maker.github.io/xc-revier/xc-revier.user.js
+// @updateURL    https://xc-revier.github.io/xc-revier.user.js
+// @downloadURL  https://xc-revier.github.io/xc-revier.user.js
 // ==/UserScript==
 
 (function(){
 'use strict';
 if(window.top!==window.self||window.name==='xcrevier') return; // nicht im Rahmen und nicht im eigenen Hilfsfenster laufen
-const GAME='https://deadfox-maker.github.io/xc-revier/';
-const BUILD='v2.5 · 04.10.2026 21:16';
+const GAME='https://xc-revier.github.io/';
+const BUILD='v2.6 · 06.10.2026 18:01';
 const RX=/:[^\/]+\/\d{1,2}\.\d{1,2}\.\d{4}\/\d{1,2}:\d{2}/;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const rnd=(a,b)=>a+Math.random()*(b-a);
