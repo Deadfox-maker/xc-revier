@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         XC Revier: XContest-Flüge ins Spiel laden
 // @namespace    https://xc-revier.github.io/
-// @version      2.6
+// @version      2.7
 // @description  Zeigt auf XContest-Fluglisten, welche Flüge schon im XC Revier sind, holt die fehlenden IGC-Dateien und lädt sie nach Prüfung von Schirm und Klasse direkt ins Spiel.
 // @author       XC Revier
 // @match        *://www.xcontest.org/*
@@ -23,7 +23,7 @@
 'use strict';
 if(window.top!==window.self||window.name==='xcrevier') return; // nicht im Rahmen und nicht im eigenen Hilfsfenster laufen
 const GAME='https://xc-revier.github.io/';
-const BUILD='v2.6 · 06.10.2026 18:01';
+const BUILD='v2.7 · 06.10.2026 18:40';
 const RX=/:[^\/]+\/\d{1,2}\.\d{1,2}\.\d{4}\/\d{1,2}:\d{2}/;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const rnd=(a,b)=>a+Math.random()*(b-a);
@@ -172,7 +172,7 @@ async function linkTwin(f){ const x=f.twin; if(!x||x.linked) return; x.linked=tr
 // ---------- Flugseite im Hilfsfenster öffnen, genau wie beim Lesezeichen (dort bewährt) ----------
 const IGC_RX=/(?:href|src)=["']([^"']*(?:track\.php[^"']*|\.igc(?:\?[^"']*)?))["']/i;
 const IGC_SEL='a[href*="track.php"],a[href$=".igc"],a[href*=".igc?"],a[href*="/igc/"]';
-let win=null, lastPage='', lastAnchor=null;
+let win=null, lastPage='', lastAnchor=null, lastVia='';
 function getWin(){ if(win&&!win.closed) return win; win=window.open('about:blank','xcrevier','width=900,height=700'); return win; }
 // Prüfungserkennung wie im Lesezeichen: Titel und sichtbarer Text, nicht der Quelltext
 const winVerify=d=>{ try{ const t=(d.title+' '+(d.body?d.body.innerText.slice(0,600):'')).toLowerCase(); if(/verif|captcha|robot|human|mensch|checking your browser|just a moment|challenge/.test(t)) return true; return [...d.querySelectorAll('iframe[src*="captcha"],iframe[src*="challenge"],iframe[src*="challenges.cloudflare.com"],#challenge-form,.cf-turnstile,.g-recaptcha,.h-captcha')].some(e=>e.offsetWidth>60&&e.offsetHeight>40); }catch(e){ return false; } };
@@ -204,11 +204,18 @@ function showDiag(){ if($('#xcr-diag')) return; const b=document.createElement('
   b.onclick=()=>{ const html=lastPage.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,''); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([html],{type:'text/html'})); a.download='xcrevier-diagnose.html'; a.click(); }; $('#xcr-actions').appendChild(b); }
 const looksIgc=t=>typeof t==='string'&&/^A[A-Z0-9]{3}/m.test(t.slice(0,300))&&/^B\d{6}/m.test(t);
 // Datei abholen: 1. aus dem Hilfsfenster (mit Login-Cookies), 2. über die Erweiterung, 3. Klick auf den Link wie beim Lesezeichen, Datei dabei abfangen
+// Abruf aus der Seite im Hilfsfenster heraus: ein kleines Skript dort einfügen, das mit den Rechten und Cookies der Seite lädt
+function pageFetch(w,url){ return new Promise(res=>{
+  try{ const d=w.document; let ta=d.getElementById('xcr-igc'); if(!ta){ ta=d.createElement('textarea'); ta.id='xcr-igc'; ta.style.display='none'; d.body.appendChild(ta); } ta.value='';
+    const sc=d.createElement('script'); sc.textContent='(function(){var ta=document.getElementById("xcr-igc");fetch('+JSON.stringify(url)+',{credentials:"include"}).then(function(r){return r.text().then(function(t){ta.value=(r.ok?"OK\\n":"ERR "+r.status+"\\n")+t;});}).catch(function(e){ta.value="ERR 0\\n"+(e&&e.message||e);});})();'; d.body.appendChild(sc); sc.remove();
+    const t0=Date.now(); const iv=setInterval(()=>{ let v=''; try{ v=ta.value; }catch(e){} if(v){ clearInterval(iv); const nl=v.indexOf('\n'); res({ok:v.startsWith('OK'),status:v.slice(0,nl),text:v.slice(nl+1)}); } else if(Date.now()-t0>45000){ clearInterval(iv); res({ok:false,status:'Zeit',text:''}); } },200);
+  }catch(e){ res({ok:false,status:'Fehler: '+e.message,text:''}); } }); }
 async function fetchIgcText(igcUrl,a){
   const tried=[]; const w=(win&&!win.closed)?win:null; const clickOnly=/#igc-klick$/.test(igcUrl);
-  if(w&&!clickOnly){ try{ const rr=await w.fetch(igcUrl,{credentials:'include'}); const t=await rr.text(); if(rr.ok&&looksIgc(t)) return t; tried.push('Fenster '+rr.status+(rr.ok?' (keine IGC-Datei)':'')); }catch(e){ tried.push('Fenster: '+e.message); } }
-  if(!clickOnly) try{ const r=await gm(igcUrl,{timeout:60000}); if(r.ok&&looksIgc(r.text)) return r.text; tried.push('Erweiterung '+r.status+(r.ok?' (keine IGC-Datei)':'')); if(r.ok&&isHtml(r.text)&&isLogin(r.text)) tried.push('Login-Seite'); }catch(e){ tried.push('Erweiterung: '+e.message); }
-  if(w&&a){ const t=await clickCapture(w,a); if(t) return t; tried.push('Klick ohne Daten'); }
+  lastVia=''; if(w&&!clickOnly){ const r=await pageFetch(w,igcUrl); if(r.ok&&looksIgc(r.text)){ lastVia='Seite'; return r.text; } tried.push('Seite '+r.status.replace(/^(OK|ERR) ?/,'')+(r.ok?' (keine IGC-Datei)':'')); }
+  if(w&&!clickOnly){ try{ const rr=await w.fetch(igcUrl,{credentials:'include'}); const t=await rr.text(); if(rr.ok&&looksIgc(t)){ lastVia='Fenster'; return t; } tried.push('Fenster '+rr.status+(rr.ok?' (keine IGC-Datei)':'')); }catch(e){ tried.push('Fenster: '+e.message); } }
+  if(!clickOnly) try{ const r=await gm(igcUrl,{timeout:60000}); if(r.ok&&looksIgc(r.text)){ lastVia='Erweiterung'; return r.text; } tried.push('Erweiterung '+r.status+(r.ok?' (keine IGC-Datei)':'')); if(r.ok&&isHtml(r.text)&&isLogin(r.text)) tried.push('Login-Seite'); }catch(e){ tried.push('Erweiterung: '+e.message); }
+  if(w&&a){ const t=await clickCapture(w,a); if(t){ lastVia='Klick'; return t; } tried.push('Klick ohne Daten'); }
   throw new Error('IGC nicht geladen ('+tried.join(' · ')+') · Link: '+igcUrl.slice(0,90));
 }
 // Klick auf den IGC-Link im Hilfsfenster; was die Seite dabei lädt (fetch, XHR oder Blob), wird abgefangen
@@ -226,7 +233,7 @@ function clickCapture(w,a){ return new Promise(res=>{
 async function fetchOne(f){
   f.status='busy'; mark(f);
   // Jede Flugseite wird genau einmal geladen, im Hilfsfenster (wie beim Lesezeichen); dann die IGC-Datei
-  const igcUrl=await linkViaWindow(f); log('IGC-Link: '+igcUrl.slice(0,100),'#98A4AE'); const text=await fetchIgcText(igcUrl,lastAnchor);
+  const igcUrl=await linkViaWindow(f); log('IGC-Link: '+igcUrl.slice(0,100),'#98A4AE'); const text=await fetchIgcText(igcUrl,lastAnchor); log('Datei geholt über: '+lastVia,'#98A4AE');
   const igc={text};
   const p=parseIGC(igc.text); const bad=validate(p.coords); if(bad) throw new Error(bad);
   if(!p.date) p.date=f.date;
